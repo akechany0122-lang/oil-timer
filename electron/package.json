@@ -5,6 +5,10 @@
   "description": "ガラスの中をオイルがしずくになって流れ落ちる、癒しのオイルタイマー（デスクトップ版）",
   "author": "akechany0122-lang",
   "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/akechany0122-lang/oil-timer.git"
+  },
   "main": "main.js",
   "scripts": {
     "start": "electron ."
@@ -16,10 +20,36 @@
   "build": {
     "appId": "io.github.akechany0122-lang.oiltimer",
     "productName": "Oil Timer",
-    "files": ["main.js", "preload.js", "app/**"],
-    "protocols": [{ "name": "Oil Timer", "schemes": ["oiltimer"] }],
-    "mac": { "category": "public.app-category.lifestyle", "identity": null, "target": ["dir"] },
-    "win": { "target": ["nsis"] },
-    "nsis": { "oneClick": true, "perMachine": false, "artifactName": "OilTimer-Setup-win.exe" }
+    "files": [
+      "main.js",
+      "preload.js",
+      "app/**"
+    ],
+    "protocols": [
+      {
+        "name": "Oil Timer",
+        "schemes": [
+          "oiltimer"
+        ]
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.lifestyle",
+      "identity": null,
+      "target": [
+        "dir"
+      ]
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ]
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "artifactName": "OilTimer-Setup-win.exe"
+    },
+    "publish": null
   }
 }
