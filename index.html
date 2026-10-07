@@ -1,0 +1,2512 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Oil Timer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link id="font-link" href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500&family=Zen+Kaku+Gothic+New:wght@300;400;500&display=swap" rel="stylesheet">
+<style id="app-style">
+:root{
+  --bg:#e9ebef;
+  --ink:#4e535d; --ink-soft:#8d929c;
+  --panel:rgba(255,255,255,.80); --panel-line:rgba(255,255,255,.95); --panel-shadow:0 10px 30px rgba(30,40,60,.10), 0 1px 2px rgba(30,40,60,.06);
+  --chip:rgba(30,40,60,.05); --chip-hover:rgba(30,40,60,.10); --chip-on:#30343c; --chip-on-ink:#fff;
+  --accent:#2f6bff;
+  color-scheme: light;
+}
+:root[data-theme="dark"]{
+  --bg:#15171b;
+  --ink:#d9dce2; --ink-soft:#8a8f99;
+  --panel:rgba(36,39,46,.84); --panel-line:rgba(255,255,255,.08); --panel-shadow:0 12px 34px rgba(0,0,0,.45), 0 1px 2px rgba(0,0,0,.3);
+  --chip:rgba(255,255,255,.06); --chip-hover:rgba(255,255,255,.12); --chip-on:#e9ebef; --chip-on-ink:#17191d;
+  color-scheme: dark;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;overflow:hidden}
+body{
+  font-family:"Inter","Zen Kaku Gothic New",system-ui,sans-serif;
+  color:var(--ink);background:var(--bg);
+  -webkit-font-smoothing:antialiased;
+}
+button{font:inherit;color:inherit}
+canvas.stage{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none}
+.overlay{position:fixed;inset:0;pointer-events:none}
+.loading{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
+  font-family:"Zen Kaku Gothic New",sans-serif;font-size:13px;letter-spacing:.2em;color:var(--ink-soft);transition:opacity .8s}
+.loading.gone{opacity:0;pointer-events:none}
+
+.hint{
+  position:fixed;top:34px;left:0;right:0;text-align:center;pointer-events:none;
+  font-family:"Zen Kaku Gothic New",sans-serif;font-weight:400;font-size:14px;letter-spacing:.18em;color:var(--ink-soft);
+  transition:opacity 1.2s ease;z-index:5;
+}
+.hint.hidden{opacity:0}
+
+.ot-ui{position:absolute;left:0;top:0;pointer-events:none}
+.ot-grip{
+  position:absolute;pointer-events:auto;transform:translate(-50%,-50%);
+  width:64px;height:22px;border-radius:11px;cursor:move;
+  display:flex;align-items:center;justify-content:center;
+  background:var(--panel);box-shadow:var(--panel-shadow);border:1px solid var(--panel-line);
+  opacity:0;transition:opacity .35s ease;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+}
+.ot-grip::before{content:"";width:22px;height:6px;
+  background:radial-gradient(circle,var(--ink-soft) 1.2px,transparent 1.6px) 0 0/6px 6px;}
+.ot-ui.hover .ot-grip,.ot-ui.moving .ot-grip,.ot-grip:hover{opacity:1}
+.ot-hud{position:absolute;transform:translateX(-50%);text-align:center;white-space:nowrap;pointer-events:auto}
+.ot-time{
+  font-family:"Inter",sans-serif;font-weight:200;font-size:30px;letter-spacing:.06em;
+  font-variant-numeric:tabular-nums;color:var(--ink);opacity:.82;line-height:1.1;
+  transition:opacity .4s ease,color .4s ease;
+}
+.ot-sub{font-family:"Zen Kaku Gothic New",sans-serif;font-size:11px;letter-spacing:.2em;color:var(--ink-soft);margin-top:4px;min-height:14px}
+.ot-ui.done .ot-time{color:var(--accent);animation:breathe 2.6s ease-in-out infinite}
+@keyframes breathe{0%,100%{opacity:.45}50%{opacity:1}}
+.ot-panel{
+  margin-top:10px;display:inline-flex;flex-direction:column;align-items:center;gap:8px;
+  padding:10px 11px;border-radius:16px;background:var(--panel);border:1px solid var(--panel-line);
+  box-shadow:var(--panel-shadow);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+  opacity:0;transform:translateY(-4px);pointer-events:none;transition:opacity .35s ease,transform .35s ease;
+}
+.ot-ui.hover .ot-panel,.ot-hud:hover .ot-panel,.ot-ui.panel-pin .ot-panel{opacity:1;transform:none;pointer-events:auto}
+.ot-row{display:flex;gap:4px;align-items:center}
+.ot-hint{font-size:10px;color:var(--ink-soft);margin-left:6px;letter-spacing:.05em;font-family:"Zen Kaku Gothic New",sans-serif}
+.ot-row.looks{flex-wrap:wrap;max-width:440px}
+.ot-row input.yaw{width:170px;accent-color:var(--chip-on)}
+body.desktop .ot-row.looks:has(input.yaw){display:flex}
+body.desktop .ot-row.looks:has(input.yaw) .ot-hint,body.desktop .ot-row.looks:has(input.yaw) .ot-label{display:none}
+body.desktop .ot-row input.yaw{width:150px}
+.ot-label{font-family:"Zen Kaku Gothic New",sans-serif;font-size:10px;letter-spacing:.15em;color:var(--ink-soft);width:44px;text-align:left}
+.chip{
+  border:0;background:var(--chip);border-radius:9px;height:26px;min-width:30px;padding:0 8px;
+  font-size:12px;font-weight:400;cursor:pointer;color:var(--ink);transition:background .2s;
+  font-variant-numeric:tabular-nums;font-family:"Zen Kaku Gothic New","Inter",sans-serif;
+}
+.chip:hover{background:var(--chip-hover)}
+.chip.on{background:var(--chip-on);color:var(--chip-on-ink)}
+.chip.icon{display:inline-flex;align-items:center;justify-content:center;padding:0 7px}
+.chip svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.chip.off svg{opacity:.4}
+.swatch{width:26px;height:26px;border-radius:50%;border:2px solid transparent;cursor:pointer;padding:0;position:relative;overflow:hidden;
+  box-shadow:inset 0 1px 2px rgba(255,255,255,.6), 0 1px 2px rgba(0,0,0,.15)}
+.swatch.on{border-color:var(--chip-on)}
+.swatch span{position:absolute;inset:0}
+.sep{width:1px;height:16px;background:var(--chip-hover);margin:0 3px}
+.ot-custom{display:none;align-items:center;gap:4px;font-size:12px;color:var(--ink-soft)}
+.ot-custom.show{display:flex}
+.ot-custom input{
+  width:58px;height:26px;border-radius:9px;border:0;background:var(--chip);color:var(--ink);
+  font:inherit;font-size:12px;text-align:center;outline:none;
+}
+
+.dock{
+  position:fixed;right:22px;bottom:22px;display:flex;gap:6px;padding:6px;border-radius:16px;z-index:10;
+  background:var(--panel);border:1px solid var(--panel-line);box-shadow:var(--panel-shadow);
+  backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+  opacity:.55;transition:opacity .3s ease;
+}
+.dock:hover{opacity:1}
+.dock button{
+  width:34px;height:34px;border:0;border-radius:11px;background:transparent;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+}
+.dock button:hover{background:var(--chip)}
+.dock svg{width:18px;height:18px;stroke:var(--ink);fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.tip{
+  position:fixed;left:50%;bottom:28px;transform:translateX(-50%);font-size:12px;color:var(--ink-soft);
+  letter-spacing:.08em;pointer-events:none;opacity:0;transition:opacity .5s;font-family:"Zen Kaku Gothic New",sans-serif;z-index:11;
+}
+.tip.show{opacity:1}
+
+body.pip .ot-grip,body.pip .ot-sub,body.pip .ot-row.actions,body.pip .ot-row.looks{display:none}
+.desk-menu{
+  position:fixed;right:22px;bottom:76px;z-index:12;display:none;gap:6px;padding:6px;
+  border-radius:16px;background:var(--panel);border:1px solid var(--panel-line);box-shadow:var(--panel-shadow);
+  backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+}
+.desk-menu.show{display:flex}
+/* settings: docked at the left on wide screens, a popup above the dock on narrow ones */
+.side{position:fixed;left:24px;top:50%;transform:translateY(-50%);z-index:9;opacity:.55;transition:opacity .35s ease}
+.side:hover,.side:focus-within,.side:has(.pop.open){opacity:1}
+.side .ot-panel{margin:0;opacity:1;transform:none;pointer-events:auto;align-items:stretch}
+.side .ot-row{flex-wrap:wrap;max-width:400px;row-gap:5px}
+.side .ot-label{width:52px;white-space:nowrap}
+.side .ot-row .ot-label + *{margin-left:0}
+@media (max-width:520px){.side .ot-row{max-width:none}.side .ot-label{width:100%}.side .ot-row input.yaw{flex:1}}
+#setBtn{display:none}
+@media (max-width:1099px){
+  .side{left:auto;right:22px;top:auto;bottom:76px;transform:translateY(8px);
+    opacity:0;pointer-events:none;transition:opacity .25s ease,transform .25s ease}
+  .side.show{opacity:1;transform:none;pointer-events:auto}
+  #setBtn{display:flex}
+}
+.desk-menu button{border:0;background:var(--chip);border-radius:11px;width:44px;height:44px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--ink)}
+.desk-menu svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.desk-menu button:hover{background:var(--chip-hover)}
+.chip[data-a="quit"]{display:none}
+/* desktop window: nothing but the timer and a few controls on hover */
+html:has(body.desktop),body.desktop{background:transparent !important}
+body.desktop .hint,body.desktop .dock,body.desktop .tip,body.desktop .desk-menu,body.desktop .loading{display:none !important}
+body.desktop .ot-grip{display:flex;position:fixed;left:50% !important;top:10px !important;transform:translateX(-50%)}
+body.desktop:hover .ot-grip{opacity:1}
+body.desktop .ot-ui [data-a="quit"]{display:inline-flex}
+body.pip .ot-time{font-size:18px}
+body.pip .ot-hud{top:auto !important;bottom:4px;left:50% !important;position:fixed}
+body.pip .ot-panel{position:fixed;left:50%;bottom:30px;transform:translateX(-50%);margin:0;padding:6px}
+body.pip .ot-hud:hover .ot-panel{transform:translateX(-50%)}
+body.pip .ot-row.durations .chip{min-width:24px;padding:0 5px;height:22px;font-size:11px}
+body.pip .ot-label{display:none}
+/* icon rail + pop-out palettes */
+.side .ot-panel.full{position:relative;display:flex;padding:0;background:none;border:0;box-shadow:none;backdrop-filter:none;-webkit-backdrop-filter:none}
+.rail{display:flex;flex-direction:column;gap:2px;padding:6px;border-radius:20px;background:var(--panel);border:1px solid var(--panel-line);
+  box-shadow:var(--panel-shadow);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
+.rb{position:relative;width:40px;height:40px;border:0;border-radius:13px;background:transparent;color:var(--ink);cursor:pointer;
+  display:flex;align-items:center;justify-content:center;transition:background .2s}
+.rb:hover,.rb.on-pop{background:var(--chip)}
+.rb svg,.pi svg,.prow>svg{width:20px;height:20px;stroke:currentColor;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.rb.off svg{opacity:.32}
+.rb .cur-design{display:flex;height:32px}
+.rb .cur-design svg{width:auto;height:32px}
+.cur-color{width:20px;height:20px;border-radius:50%;box-shadow:inset 0 1px 2px rgba(255,255,255,.6),0 1px 2px rgba(0,0,0,.2)}
+.cur-min{position:absolute;right:1px;bottom:1px;min-width:15px;height:15px;padding:0 3px;border-radius:8px;box-sizing:border-box;
+  background:var(--chip-on);color:var(--chip-on-ink);font:600 9px/15px "Inter",sans-serif;text-align:center}
+.rsep{display:block;height:1px;margin:4px 8px;background:var(--chip-hover)}
+.pop{position:absolute;left:calc(100% + 10px);top:50%;transform:translate(-4px,-50%);display:flex;gap:5px;align-items:center;padding:8px;
+  border-radius:18px;background:var(--panel);border:1px solid var(--panel-line);box-shadow:var(--panel-shadow);
+  backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);opacity:0;pointer-events:none;transition:opacity .2s ease,transform .2s ease;white-space:nowrap}
+.pop.open{opacity:1;pointer-events:auto;transform:translate(0,-50%)}
+.pop.col{flex-direction:column;align-items:stretch}
+@media (max-width:1099px){
+  .pop{left:auto;right:calc(100% + 8px);top:auto;bottom:0;transform:translate(4px,0);flex-wrap:wrap;white-space:normal;width:max-content;max-width:calc(100vw - 100px)}
+  .pop.open{transform:none}
+  .pop.col{width:auto}
+}
+.prow{display:flex;gap:5px;align-items:center}
+.prow>svg{width:18px;height:18px;color:var(--ink-soft);flex:none}
+.prow input.yaw{flex:1;width:auto;min-width:110px;accent-color:var(--chip-on)}
+.pi{width:36px;height:36px;border:0;border-radius:11px;background:var(--chip);color:var(--ink);cursor:pointer;flex:none;
+  display:flex;align-items:center;justify-content:center;font:400 13px "Inter",sans-serif;font-variant-numeric:tabular-nums;transition:background .2s}
+.pi:hover{background:var(--chip-hover)}
+.pi.on{background:var(--chip-on);color:var(--chip-on-ink)}
+.psep{width:1px;height:22px;background:var(--chip-hover);margin:0 2px}
+.dz{width:38px;height:64px;border:0;border-radius:11px;background:var(--chip);color:var(--ink);cursor:pointer;padding:5px;flex:none;
+  display:flex;align-items:center;justify-content:center;transition:background .2s}
+.dz:hover{background:var(--chip-hover)}
+.dz.on{background:var(--chip-on);color:var(--chip-on-ink)}
+.dz svg{height:100%;width:auto}
+svg .dg-o{fill:none;stroke:currentColor;stroke-width:13}
+svg .dg-q{fill:currentColor;stroke:none;opacity:.55}
+svg .dg-l{fill:none;stroke:currentColor;stroke-width:11;stroke-linecap:round}
+svg .dg-p{fill:currentColor;stroke:none}
+.pop .ot-custom{display:none}
+.pop .ot-custom.show{display:flex}
+.pop .ot-custom input{width:54px;height:36px;border-radius:11px}
+.ot-sub{display:none}
+.hint{display:flex;justify-content:center;gap:26px}
+.hint span{display:flex;gap:4px;align-items:center}
+.hint svg{width:20px;height:20px;stroke:var(--ink-soft);fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+/* the main control: turn the timer over */
+.ot-flip{display:inline-flex;align-items:center;justify-content:center;margin-top:10px;width:46px;height:46px;padding:0;border:0;border-radius:50%;cursor:pointer;
+  background:var(--chip-on);color:var(--chip-on-ink);font-family:"Zen Kaku Gothic New",sans-serif;font-size:12px;letter-spacing:.14em;
+  box-shadow:var(--panel-shadow);transition:transform .15s ease,opacity .2s ease}
+.ot-flip:hover{transform:translateY(-1px)}
+.ot-flip:active{transform:scale(.96)}
+.ot-flip svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+body.pip:not(.desktop) .ot-flip{display:none}
+.ot-ui.ready .ot-flip{animation:nudge 2.4s ease-in-out infinite}
+@keyframes nudge{0%,100%{box-shadow:var(--panel-shadow),0 0 0 0 color-mix(in srgb,var(--chip-on) 35%,transparent)}50%{box-shadow:var(--panel-shadow),0 0 0 8px transparent}}
+/* desktop window: the timer above, a small control area below it */
+body.desktop .ot-hud{position:fixed;left:0 !important;right:0;top:auto !important;bottom:0;transform:none;height:112px;box-sizing:border-box;
+  display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:7px;padding-bottom:8px}
+body.desktop .ot-time{font-size:22px;font-weight:300;opacity:.95;text-shadow:0 1px 8px rgba(255,255,255,.8)}
+:root[data-theme="dark"] body.desktop .ot-time{text-shadow:0 1px 8px rgba(0,0,0,.8)}
+body.desktop .ot-sub{display:none}
+body.desktop .ot-flip{margin-top:0;width:42px;height:42px}
+body.desktop .ot-panel{position:static;transform:none !important;margin:0;padding:3px 5px;border-radius:12px;flex-direction:row;gap:6px;opacity:0;pointer-events:none}
+body.desktop:hover .ot-panel{opacity:1;pointer-events:auto}
+body.desktop .ot-row.looks,body.desktop .ot-custom,body.desktop [data-m="custom"],body.desktop .ot-panel [data-a="flip"],
+body.desktop [data-a="pip"],body.desktop .ot-row.actions .sep{display:none !important}
+body.desktop .ot-row{gap:3px}
+body.desktop .ot-row.actions{display:flex;padding-left:6px;border-left:1px solid var(--chip-hover)}
+body.desktop .ot-panel .chip{height:22px;min-width:22px;padding:0 4px;font-size:11px;border-radius:7px}
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<div class="loading" id="loading">LOADING</div>
+<div class="hint" id="hint">
+  <span title="上下にドラッグでひっくり返す"><svg viewBox="0 0 24 24"><path d="M12 3v18M8 7l4-4 4 4M8 17l4 4 4-4"/></svg><svg viewBox="0 0 24 24"><path d="M19.4 9A8 8 0 0 0 5.6 6.8M4.6 15a8 8 0 0 0 13.8 2.2"/><path d="M5 3.5v3.6h3.6M19 20.5v-3.6h-3.6"/><path d="M9.5 7.5h5l-2.5 4.5 2.5 4.5h-5l2.5-4.5z"/></svg></span>
+  <span title="左右にドラッグで奥行きを見る"><svg viewBox="0 0 24 24"><path d="M3 12h18M7 8l-4 4 4 4M17 8l4 4-4 4"/></svg><svg viewBox="0 0 24 24"><path d="M12 3 4 7.5v9L12 21l8-4.5v-9z"/><path d="M4 7.5 12 12l8-4.5M12 12v9"/></svg></span>
+</div>
+<div class="tip" id="tip"></div>
+<div class="desk-menu" id="deskMenu">
+  <button id="deskApp" title="背景なしでデスクトップに置く（Macアプリ）"><svg viewBox="0 0 24 24"><rect x="2.5" y="4" width="19" height="13" rx="2" stroke-dasharray="2.2 2.2"/><path d="M8 21h8M12 17v4"/><rect x="10" y="6.5" width="4" height="8" rx="1.2"/></svg></button>
+  <button id="deskPip" title="ブラウザの小窓で置く（Chrome / Edge）"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2.5"/><rect x="12" y="11" width="7" height="6" rx="1.2"/></svg></button>
+</div>
+<div class="side" id="side"></div>
+<div class="dock">
+  <button id="setBtn" title="設定"><svg viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg></button>
+  <button id="deskBtn" title="デスクトップに置く"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/><path d="M12 7v5M9.5 9.5 12 12l2.5-2.5"/></svg></button>
+  <button id="themeBtn" title="ライト / ダーク"><svg viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg></button>
+  <button id="fsBtn" title="フルスクリーン"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
+</div>
+
+<script type="module">
+import * as THREE from 'three';
+// desktop mode: the timer alone on a transparent, always-on-top window (Mac app)
+const DESKTOP = new URLSearchParams(location.search).has('desktop');
+const native = msg => { try { window.webkit?.messageHandlers?.oiltimer?.postMessage(msg); } catch (e) {} };
+if (DESKTOP) document.body.classList.add('pip', 'desktop');
+if (DESKTOP) {          // report problems to the app's log
+  addEventListener('error', e => native({ type: 'log', msg: 'error: ' + e.message }));
+  addEventListener('unhandledrejection', e => native({ type: 'log', msg: 'rejection: ' + (e.reason?.message || e.reason) }));
+}
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+
+/* =====================================================================
+   1. Container shapes (simulation units, y down). Every design has its
+   own clear container; each shape is symmetric left/right and top/bottom,
+   so after a half turn the same chambers and paths work again.
+   The physics walls come from the same outline as the glass.
+   ===================================================================== */
+const W = 240, H = 460, M = 18;
+const CX = W / 2, CY = H / 2;
+const PR = 2.6, RAMP_R = 2.4, PEG_R = 3.2, GATE_R = 1.2;
+const BORDER = 18;                                   // thickness of the glass around the cavity
+const mX = p => [W - p[0], p[1]], mY = p => [p[0], H - p[1]];
+const rot = p => [W - p[0], H - p[1]];
+const smax = (a, b, k) => { const h = Math.max(k - Math.abs(a - b), 0) / k; return Math.max(a, b) + h * h * k * 0.25; };
+const sdBox = (x, y, bx, by, r) => { const qx = Math.abs(x) - bx + r, qy = Math.abs(y) - by + r; return Math.hypot(Math.max(qx, 0), Math.max(qy, 0)) + Math.min(Math.max(qx, qy), 0) - r; };
+// a heart (lobes up, tip down) in the upper half; scaled so its sign changes on the outline
+const heartF = (x, y) => { const u = x / 96, v = -(y + 92) / 103, a = u * u + v * v - 1; return (a * a * a - u * u * v * v * v) * 120; };
+// inside < 0. p is relative to the centre. Only the zero line matters (exact distances are rebuilt from it)
+const SHAPES = {
+  rect: { name: '角丸長方形', f: (x, y) => sdBox(x, y, 110, 220, 26) },
+  octagon: { name: '八角形', f: (x, y) => smax(sdBox(x, y, 110, 220, 10), (Math.abs(x) + Math.abs(y) - 282) / Math.SQRT2, 14) },
+  capsule: { name: 'カプセル', f: (x, y) => Math.hypot(x, Math.max(Math.abs(y) - 110, 0)) - 110 },
+  hourglass: { name: '砂時計', f: (x, y) => smax(Math.abs(x) - (110 - 34 * Math.exp(-((y / 95) ** 2))), Math.abs(y) - 220, 70) },
+  ellipse: { name: '楕円', f: (x, y) => (Math.hypot(x / 110, y / 220) - 1) * 110 },
+  heart: { name: 'ダブルハート', f: (x, y) => Math.min(heartF(x, y), heartF(-x, -y), sdBox(x, y, 60, 100, 24)) },
+  tower: { name: '3連スクエア', f: (x, y) => Math.min(sdBox(x, y + 150, 110, 74, 34), sdBox(x, y, 110, 74, 34), sdBox(x, y - 150, 110, 74, 34), sdBox(x, y, 92, 200, 20)) },
+  barrel: { name: '樽', f: (x, y) => smax(Math.abs(x) - (96 + 14 * Math.cos(Math.PI * y / 440)), Math.abs(y) - 220, 60) },
+};
+
+const Q_R = [[64, 110], [122, 98], [122, 126], [64, 116]];
+
+// the four holes (gates), at x = hx from the side and y = gy from the end.
+// crossing: blue runs top-left -> bottom-right; otherwise straight down on its own side
+function holeGates(hx, gy, crossing) {
+  const TL = { a: [hx - 7, gy], b: [hx + 7, gy], top: true, right: false };
+  const BL = { a: [hx - 7, H - gy], b: [hx + 7, H - gy], top: false, right: false };
+  const TR = { a: [W - hx - 7, gy], b: [W - hx + 7, gy], top: true, right: true };
+  const BR = { a: [W - hx - 7, H - gy], b: [W - hx + 7, H - gy], top: false, right: true };
+  return crossing ? [[TL, BR], [TR, BL]] : [[TL, BL], [TR, BR]];
+}
+
+/* =====================================================================
+   2. Designs (inspired by real liquid-motion timers). For each one the
+   blue path is defined; red is its mirror image on its own depth plane.
+   Every path is unchanged by a half turn, so flipping always works.
+   ===================================================================== */
+const crossStairs = [];
+for (let i = 0; i < 8; i++) crossStairs.push([[40 + 18 * i, 133.5 + 26 * i], [74 + 18 * i, 144.5 + 26 * i]]);
+const wheelGuide = [[40, 134], [152, 162]];      // ends right above the paddles
+// arms of a wheel: n spokes from the hub to radius R (thickness w), in the rotor's own frame
+const wheelArms = (n, hub, R, w) => Array.from({ length: n }, (_, k) => {
+  const a = k * Math.PI * 2 / n; return [[Math.cos(a) * hub, Math.sin(a) * hub], [Math.cos(a) * R, Math.sin(a) * R], w];
+});
+// pins in a triangle (Galton board): each drop is knocked left or right at every row
+const galton = (cx, y0, rows, dy, dx) => {
+  const out = [];
+  for (let j = 0; j < rows; j++) for (let k = 0; k <= j; k++) out.push([cx + (k - j / 2) * dx, y0 + dy * j]);
+  return out;
+};
+// diamond: rows of 1,2,..,n,..,2,1 pins, symmetric top/bottom
+const diamond = (cx, cy, n, dy, dx) => {
+  const out = [], rows = 2 * n - 1;
+  for (let j = 0; j < rows; j++) { const k = j < n ? j : rows - 1 - j; for (let i = 0; i <= k; i++) out.push([cx + (i - k / 2) * dx, cy + (j - (rows - 1) / 2) * dy]); }
+  return out;
+};
+const rainPegs = diamond(57, 230, 4, 22, 20);
+const towerPegs = diamond(76, 230, 3, 24, 20);
+const DESIGN_DEFS = {
+  cross: {
+    name: '階段', desc: 'X字に交差するガラスの階段', shape: 'rect',
+    ramps: crossStairs, pegs: [], crossing: true, drag: 0.016, kScale: 1,
+  },
+  wheel: {
+    name: '水車', desc: 'しずくで回る2枚の水車', shape: 'octagon',
+    ramps: [wheelGuide, wheelGuide.map(rot)], pegs: [], crossing: true, drag: 0.016, kScale: 1.15,
+    rotors: [{ cx: CX, cy: CY, hub: 11, segs: wheelArms(8, 11, 60, 3.6), I: 7000 }],
+  },
+  rain: {
+    name: 'レイン', desc: 'ひし形に並んだピンの間を、雨のように跳ねて落ちる', shape: 'capsule', centerWall: true,
+    ramps: [], pegs: rainPegs, crossing: false, drag: 0.02, kScale: 1,
+  },
+  seesaw: {
+    name: 'シーソー', desc: 'しずくの重みで2段のシーソーが傾き、受け渡していく', shape: 'barrel', centerWall: true,
+    ramps: [], pegs: [], crossing: false, drag: 0.02, kScale: 1.5,
+    rotors: [
+      { cx: 72, cy: 205, hub: 4, segs: [[[-38, 0], [38, 0], 2.8]], I: 2600, spring: 0.0012, lim: 0.5 },
+      { cx: 58, cy: 292, hub: 4, segs: [[[-38, 0], [38, 0], 2.8]], I: 2600, spring: 0.0012, lim: 0.5 },
+    ],
+  },
+  pinwheel: {
+    name: '風車', desc: 'ハートの間で小さな風車がくるくる回る', shape: 'heart', hole: [86, 113], centerWall: true,
+    ramps: [], pegs: [], crossing: false, drag: 0.02, kScale: 1.3,
+    rotors: [
+      { cx: 95, cy: 182, hub: 5, segs: wheelArms(4, 5, 19, 2.4), I: 1300 },
+      { cx: 82, cy: 272, hub: 5, segs: wheelArms(4, 5, 19, 2.4), I: 1300, phi0: 0.4 },
+    ],
+  },
+  zigzag: {
+    name: 'ジグザグ', desc: '自重で垂れる4枚のフラップを、しずくが左右に行ったり来たり', shape: 'ellipse',
+    ramps: [], centerWall: true,
+    // hinged flaps: pivot at one end, hanging against a stop -> they always slope down, whichever way up
+    rotors: [
+      { cx: 34, cy: 163, hub: 3, segs: [[[0, 0], [38, 0], 2.4]], arm: 0, I: 1500, grav: 0.004, lim: 0.28, damp: 0.99 },
+      { cx: 86, cy: 201, hub: 3, segs: [[[0, 0], [-38, 0], 2.4]], arm: Math.PI, I: 1500, grav: 0.004, lim: 0.28, damp: 0.99 },
+      { cx: 34, cy: 239, hub: 3, segs: [[[0, 0], [38, 0], 2.4]], arm: 0, I: 1500, grav: 0.004, lim: 0.28, damp: 0.99 },
+      { cx: 86, cy: 277, hub: 3, segs: [[[0, 0], [-38, 0], 2.4]], arm: Math.PI, I: 1500, grav: 0.004, lim: 0.28, damp: 0.99 },
+    ],
+    pegs: [], crossing: false, drag: 0.018, kScale: 1.2,
+  },
+  pendulum: {
+    name: '振り子', desc: 'しずくが当たると2つの振り子がゆらゆら揺れる', shape: 'hourglass', centerWall: true,
+    ramps: [], pegs: [], crossing: false, drag: 0.02, kScale: 1.5,
+    rotors: [
+      { cx: 62, cy: 165, hub: 3, segs: [[[0, 0], [0, 32], 2], [[-13, 32], [13, 32], 3]], I: 1800, grav: 0.0016, damp: 0.993 },
+      { cx: 50, cy: 262, hub: 3, segs: [[[0, 0], [0, 32], 2], [[-13, 32], [13, 32], 3]], I: 1800, grav: 0.0016, damp: 0.993 },
+    ],
+  },
+  tower: {
+    name: '3連', desc: '縦に連なる3つの部屋を、ピンを抜けて落ちていく', shape: 'tower', hole: [75, 113], centerWall: true,
+    ramps: [], pegs: towerPegs, crossing: false, drag: 0.022, kScale: 1.3,
+  },
+};
+const DESIGN_ORDER = ['cross', 'wheel', 'rain', 'tower', 'seesaw', 'pinwheel', 'zigzag', 'pendulum'];
+
+
+/* ---------- collision primitives ---------- */
+function prepPoly(v) {
+  let cx = 0, cy = 0;
+  v.forEach(p => { cx += p[0]; cy += p[1]; });
+  cx /= v.length; cy /= v.length;
+  const ed = [];
+  let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+  for (let k = 0; k < v.length; k++) {
+    const a = v[k], b = v[(k + 1) % v.length];
+    const dx = b[0] - a[0], dy = b[1] - a[1], len = Math.hypot(dx, dy);
+    let nx = dy / len, ny = -dx / len;
+    if ((cx - a[0]) * nx + (cy - a[1]) * ny > 0) { nx = -nx; ny = -ny; }
+    ed.push({ ax: a[0], ay: a[1], dx, dy, nx, ny, l2: dx * dx + dy * dy });
+    x0 = Math.min(x0, a[0]); y0 = Math.min(y0, a[1]); x1 = Math.max(x1, a[0]); y1 = Math.max(y1, a[1]);
+  }
+  return { v, ed, x0, y0, x1, y1 };
+}
+function prepCap(s, r) {
+  const [a, b] = s, dx = b[0] - a[0], dy = b[1] - a[1];
+  return {
+    ax: a[0], ay: a[1], bx: b[0], by: b[1], dx, dy, l2: Math.max(dx * dx + dy * dy, 1e-6), r,
+    x0: Math.min(a[0], b[0]) - r, x1: Math.max(a[0], b[0]) + r,
+    y0: Math.min(a[1], b[1]) - r, y1: Math.max(a[1], b[1]) + r,
+  };
+}
+
+const OUT = { x: 0, y: 0, nx: 0, ny: 0 };
+function pushPoly(P, x, y, r) {
+  if (x < P.x0 - r || x > P.x1 + r || y < P.y0 - r || y > P.y1 + r) return false;
+  let maxd = -1e9, me = null;
+  for (const e of P.ed) {
+    const d = (x - e.ax) * e.nx + (y - e.ay) * e.ny;
+    if (d > maxd) { maxd = d; me = e; }
+  }
+  if (maxd >= r) return false;
+  if (maxd < 0) {
+    const p = r - maxd;
+    OUT.x = x + me.nx * p; OUT.y = y + me.ny * p; OUT.nx = me.nx; OUT.ny = me.ny;
+    return true;
+  }
+  let best = 1e9, qx = 0, qy = 0;
+  for (const e of P.ed) {
+    let t = ((x - e.ax) * e.dx + (y - e.ay) * e.dy) / e.l2;
+    t = t < 0 ? 0 : t > 1 ? 1 : t;
+    const cx = e.ax + e.dx * t, cy = e.ay + e.dy * t;
+    const d2 = (x - cx) * (x - cx) + (y - cy) * (y - cy);
+    if (d2 < best) { best = d2; qx = cx; qy = cy; }
+  }
+  const d = Math.sqrt(best);
+  if (d >= r || d < 1e-6) return false;
+  OUT.nx = (x - qx) / d; OUT.ny = (y - qy) / d;
+  OUT.x = qx + OUT.nx * r; OUT.y = qy + OUT.ny * r;
+  return true;
+}
+function pushCap(C, x, y, r) {
+  if (x < C.x0 - r || x > C.x1 + r || y < C.y0 - r || y > C.y1 + r) return false;
+  let t = ((x - C.ax) * C.dx + (y - C.ay) * C.dy) / C.l2;
+  t = t < 0 ? 0 : t > 1 ? 1 : t;
+  const qx = C.ax + C.dx * t, qy = C.ay + C.dy * t;
+  const rr = r + C.r, dx = x - qx, dy = y - qy, d2 = dx * dx + dy * dy;
+  if (d2 >= rr * rr) return false;
+  const d = Math.sqrt(d2);
+  if (d < 1e-6) { const l = Math.sqrt(C.l2); OUT.nx = -C.dy / l || 0; OUT.ny = C.dx / l || -1; }
+  else { OUT.nx = dx / d; OUT.ny = dy / d; }
+  OUT.x = qx + OUT.nx * rr; OUT.y = qy + OUT.ny * rr;
+  return true;
+}
+/* Exact signed distance to the cavity outline, precomputed on a grid per
+   shape (negative inside); sampled with its gradient for collisions. */
+const SDF_PAD = 70, SDF_RES = 1.5;
+const SHAPE_CACHE = {};
+function getShape(key) {
+  if (SHAPE_CACHE[key]) return SHAPE_CACHE[key];
+  const f = SHAPES[key].f, S = { key, name: SHAPES[key].name };
+  // outline: march rays from the centre (all shapes are star-shaped)
+  const n = 360, pts = [];
+  for (let i = 0; i < n; i++) {
+    const a = i / n * Math.PI * 2, dx = Math.cos(a), dy = Math.sin(a);
+    let r0 = 0, r1 = 1;
+    while (f(dx * r1, dy * r1) < 0 && r1 < 600) { r0 = r1; r1 += 2; }
+    for (let k = 0; k < 24; k++) { const m = (r0 + r1) / 2; if (f(dx * m, dy * m) < 0) r0 = m; else r1 = m; }
+    pts.push([CX + dx * r0, CY + dy * r0]);
+  }
+  S.outline = pts;
+  S.ext = { w: Math.max(...pts.map(p => p[0])) - Math.min(...pts.map(p => p[0])), h: Math.max(...pts.map(p => p[1])) - Math.min(...pts.map(p => p[1])) };
+  const gw = Math.ceil((W + 2 * SDF_PAD) / SDF_RES) + 1, gh = Math.ceil((H + 2 * SDF_PAD) / SDF_RES) + 1;
+  const data = new Float32Array(gw * gh);
+  for (let j = 0; j < gh; j++) {
+    const y = -SDF_PAD + j * SDF_RES;
+    for (let i = 0; i < gw; i++) {
+      const x = -SDF_PAD + i * SDF_RES;
+      let best = 1e18, inside = false;
+      for (let k = 0, l = n - 1; k < n; l = k++) {
+        const ax = pts[l][0], ay = pts[l][1], bx = pts[k][0], by = pts[k][1];
+        const ex = bx - ax, ey = by - ay, wx = x - ax, wy = y - ay;
+        let t = (wx * ex + wy * ey) / (ex * ex + ey * ey); t = t < 0 ? 0 : t > 1 ? 1 : t;
+        const qx = wx - ex * t, qy = wy - ey * t, d2 = qx * qx + qy * qy;
+        if (d2 < best) best = d2;
+        if ((ay > y) !== (by > y) && x < ax + (y - ay) * ex / ey) inside = !inside;
+      }
+      data[j * gw + i] = inside ? -Math.sqrt(best) : Math.sqrt(best);
+    }
+  }
+  S.sdf = { data, gw, gh };
+  S.sd = (x, y, grad = false) => sdSample(S, x, y, grad);
+  const sample = (x, y) => S.sd(x, y);
+  // top of the cavity on the centre line, wall position at a height
+  let ty = 0; while (sample(CX, ty) > 0) ty += 0.5; S.topY = ty;
+  S.wallX = (y, right) => { let x = CX; const st = right ? 0.5 : -0.5; while (sample(x, y) < 0 && x > -40 && x < W + 40) x += st; return x; };
+  return (SHAPE_CACHE[key] = S);
+}
+// bilinear distance + gradient (sets OUT.nx/ny, pointing out of the cavity)
+function sdSample(S, x, y, grad) {
+  const g = S.sdf, fx = (x + SDF_PAD) / SDF_RES, fy = (y + SDF_PAD) / SDF_RES;
+  let i = Math.floor(fx), j = Math.floor(fy);
+  i = i < 0 ? 0 : i > g.gw - 2 ? g.gw - 2 : i; j = j < 0 ? 0 : j > g.gh - 2 ? g.gh - 2 : j;
+  const tx = fx - i, ty = fy - j, d = g.data, k = j * g.gw + i;
+  const a = d[k], b = d[k + 1], c = d[k + g.gw], e = d[k + g.gw + 1];
+  if (grad) {
+    let gx = (b - a) * (1 - ty) + (e - c) * ty, gy = (c - a) * (1 - tx) + (e - b) * tx;
+    const l = Math.hypot(gx, gy) || 1; OUT.nx = gx / l; OUT.ny = gy / l;
+  }
+  return (a * (1 - tx) + b * tx) * (1 - ty) + (c * (1 - tx) + e * tx) * ty;
+}
+function inRegion(g, x, y) {
+  if (g.right ? x < CX + 2 : x > CX - 2) return false;
+  return g.top ? y < g.gy : y > g.gy;
+}
+function chamberSlots(D, g, gates, spacing = 4.4) {
+  const out = [];
+  const xs = g.right ? [CX, W] : [0, CX];
+  const ys = g.top ? [0, g.gy] : [g.gy, H];
+  let row = 0;
+  for (let y = ys[0] + PR; y < ys[1]; y += spacing * 0.866, row++) {
+    for (let x = xs[0] + PR + (row % 2 ? spacing / 2 : 0); x < xs[1]; x += spacing) {
+      if (!inRegion(g, x, y)) continue;
+      if (D.shape.sd(x, y) > -PR - 0.4) continue;
+      let bad = false;
+      for (const P of D.quads) if (pushPoly(P, x, y, PR + 0.4)) { bad = true; break; }
+      if (!bad) for (const G of gates) if (pushCap(G, x, y, PR + 0.4)) { bad = true; break; }
+      if (!bad) out.push([x, y]);
+    }
+  }
+  out.sort((a, b) => b[1] - a[1]);
+  return out;
+}
+// chamber plates and the centre divider, reaching out to this container's walls
+function plateQuads(S, hx, gy) {
+  const wl = y => S.wallX(y, false) - 6;
+  const ql = [[wl(gy - 13), gy - 13], [hx - 7, gy - 3], [hx - 7, gy + 3], [wl(gy + 13), gy + 13]];
+  const qr = [[hx + 7, gy - 3], [122, gy - 15], [122, gy + 13], [hx + 7, gy + 3]];
+  const div = [[118, S.topY - 6], [122, S.topY - 6], [122, gy - 1], [118, gy - 1]];
+  return [ql, qr, ql.map(mX), qr.map(mX)].flatMap(q => [q, q.map(mY)]).concat([div, div.map(mY)]);
+}
+const DESIGNS = {};
+function getDesign(id) {
+  if (DESIGNS[id]) return DESIGNS[id];
+  const def = DESIGN_DEFS[id] || DESIGN_DEFS.cross;
+  const D = { id, def, shape: getShape(def.shape) };
+  const [hx, gy] = def.hole || [57, 113];
+  D.hole = [hx, gy];
+  D.quadsRaw = plateQuads(D.shape, hx, gy);
+  D.quads = D.quadsRaw.map(prepPoly);
+  D.rampsRaw = [def.ramps, def.ramps.map(s => s.map(mX))];
+  const mirrorRotor = r => Object.assign({}, r, {
+    cx: W - r.cx, segs: r.segs.map(([a, b, w]) => [[-a[0], a[1]], [-b[0], b[1]], w]), rest: -(r.rest || 0), phi0: -(r.phi0 || 0), arm: Math.PI - (r.arm ?? Math.PI / 2),
+  });
+  D.rotors = [def.rotors || [], (def.rotors || []).map(mirrorRotor)];
+  D.pegsRaw = [def.pegs, def.pegs.map(mX)];
+  // a glass partition down the middle (for designs where the colours don't cross)
+  D.centerWall = def.centerWall ? [[CX, D.shape.topY - 4], [CX, H - D.shape.topY + 4]] : null;
+  D.caps = [0, 1].map(c => D.rampsRaw[c].map(s => prepCap(s, RAMP_R)).concat(D.pegsRaw[c].map(p => prepCap([p, p], PEG_R)))
+    .concat(D.centerWall ? [prepCap(D.centerWall, 2)] : []));
+  D.gates = holeGates(hx, gy, def.crossing).map(gs => gs.map(g => Object.assign(prepCap([g.a, g.b], GATE_R), g, {
+    cx: (g.a[0] + g.b[0]) / 2, cy: g.a[1], gy: g.a[1],
+  })));
+  D.slots = D.gates.map(gs => gs.map(g => chamberSlots(D, g, gs)));
+  D.nPer = Math.min(330, Math.floor(Math.min(...D.slots.flat().map(s => s.length)) * 0.62));
+  return (DESIGNS[id] = D);
+}
+
+/* =====================================================================
+   3. Fluid: particle-based viscoelastic fluid (double density
+   relaxation), one simulation per colour.
+   ===================================================================== */
+const HS = 10, HS2 = HS * HS;
+const RHO0 = 2.3, K_P = 0.10, K_N = 0.32;
+const XSPH = 0.08, GRAV = 0.013, FRIC = 0.035, VMAX = 2.2;
+const STEPS_PER_SEC = 180;
+
+/* A rigid glass part turning on a pivot, pushed by the drops that hit it:
+   a free wheel, a seesaw held by a spring between end stops, or a pendulum
+   that hangs toward gravity (and swings over when the timer is flipped). */
+class Rotor {
+  constructor(spec) {
+    Object.assign(this, { hub: 0, I: 3000, damp: 0.9975, spring: 0, rest: 0, lim: null, grav: 0, arm: Math.PI / 2, maxW: 0.03 }, spec);
+    this.phi = spec.phi0 ?? this.rest; this.omega = 0; this.tau = 0;
+    this.hubCap = this.hub > 0 ? prepCap([[this.cx, this.cy], [this.cx, this.cy]], this.hub) : null;
+    this.caps = [];
+    this.update();
+  }
+  update() {
+    const c = Math.cos(this.phi), s = Math.sin(this.phi), X = this.cx, Y = this.cy;
+    const P = p => [X + c * p[0] - s * p[1], Y + s * p[0] + c * p[1]];
+    this.caps = this.segs.map(([a, b, w]) => prepCap([P(a), P(b)], w));
+  }
+  integrate(gx, gy) {
+    let acc = this.tau / this.I;
+    if (this.spring) acc -= this.spring * (this.phi - this.rest);
+    if (this.grav) acc -= this.grav * Math.sin(this.phi - (Math.atan2(gy, gx) - this.arm));
+    this.omega = Math.max(-this.maxW, Math.min(this.maxW, (this.omega + acc) * this.damp));
+    this.phi += this.omega; this.tau = 0;
+    if (this.lim != null) {
+      if (this.phi > this.rest + this.lim) { this.phi = this.rest + this.lim; if (this.omega > 0) this.omega *= -0.25; }
+      else if (this.phi < this.rest - this.lim) { this.phi = this.rest - this.lim; if (this.omega < 0) this.omega *= -0.25; }
+    }
+    this.update();
+  }
+}
+
+class Sim {
+  constructor(cap, color, D) {
+    this.cap = cap; this.n = 0; this.color = color;
+    this.D = D; this.caps = D.caps[color]; this.gates = D.gates[color]; this.drag = D.def.drag; this.xsph = D.def.xsph ?? XSPH;
+    this.rotors = D.rotors[color].map(r => new Rotor(r));
+    this.impacts = [];
+    // contact counters (used to check that every part of a design actually gets oil)
+    this.capHits = new Uint32Array(this.caps.length); this.rotHits = new Uint32Array(this.rotors.length); this.touched = new Uint8Array(cap);
+    const F = () => new Float32Array(cap);
+    this.px = F(); this.py = F(); this.vx = F(); this.vy = F(); this.ox = F(); this.oy = F();
+    this.tx = F(); this.ty = F();
+    this.hold = new Uint8Array(cap);
+    this.pass = new Int8Array(cap).fill(-1);
+    this.passT = new Int16Array(cap);
+    this.gx = 0; this.gy = 1; this.hx = 0; this.hy = 0;
+    this.gateOpen = [false, false];
+    this.gc = Math.ceil((W + 40) / HS); this.gr = Math.ceil((H + 40) / HS);
+    this.cellStart = new Int32Array(this.gc * this.gr + 1);
+    this.cellFill = new Int32Array(this.gc * this.gr);
+    this.cellItems = new Int32Array(cap);
+    this.cellOf = new Int32Array(cap);
+    this.nbStart = new Int32Array(cap + 1);
+    this.nb = new Int32Array(cap * 56);
+    this.hasNb = false;
+  }
+  add(x, y) {
+    const i = this.n++;
+    this.px[i] = this.ox[i] = x; this.py[i] = this.oy[i] = y;
+    this.vx[i] = this.vy[i] = 0; this.pass[i] = -1; this.hold[i] = 0;
+    return i;
+  }
+  buildNb() {
+    const { n, px, py, gc, gr, cellStart, cellFill, cellItems, cellOf, nbStart, nb } = this;
+    cellStart.fill(0);
+    for (let i = 0; i < n; i++) {
+      let cx = ((px[i] + 20) / HS) | 0, cy = ((py[i] + 20) / HS) | 0;
+      cx = cx < 0 ? 0 : cx >= gc ? gc - 1 : cx; cy = cy < 0 ? 0 : cy >= gr ? gr - 1 : cy;
+      const c = cy * gc + cx; cellOf[i] = c; cellStart[c + 1]++;
+    }
+    for (let c = 0; c < gc * gr; c++) cellStart[c + 1] += cellStart[c];
+    cellFill.fill(0);
+    for (let i = 0; i < n; i++) { const c = cellOf[i]; cellItems[cellStart[c] + cellFill[c]++] = i; }
+    let k = 0; const maxK = nb.length;
+    for (let i = 0; i < n; i++) {
+      nbStart[i] = k;
+      const c = cellOf[i], cx = c % gc, cy = (c / gc) | 0, xi = px[i], yi = py[i];
+      for (let yy = cy - 1; yy <= cy + 1; yy++) {
+        if (yy < 0 || yy >= gr) continue;
+        for (let xx = cx - 1; xx <= cx + 1; xx++) {
+          if (xx < 0 || xx >= gc) continue;
+          const cc = yy * gc + xx;
+          for (let s = cellStart[cc], e = cellStart[cc + 1]; s < e; s++) {
+            const j = cellItems[s];
+            if (j === i) continue;
+            const dx = px[j] - xi, dy = py[j] - yi;
+            if (dx * dx + dy * dy < HS2 && k < maxK) nb[k++] = j;
+          }
+        }
+      }
+    }
+    nbStart[n] = k;
+    this.hasNb = true;
+  }
+  relax() {
+    const { n, px, py, nb, nbStart } = this;
+    for (let i = 0; i < n; i++) {
+      let rho = 0, rhoN = 0;
+      const xi = px[i], yi = py[i];
+      for (let k = nbStart[i], e = nbStart[i + 1]; k < e; k++) {
+        const j = nb[k], dx = px[j] - xi, dy = py[j] - yi, r2 = dx * dx + dy * dy;
+        if (r2 < HS2) { const q = 1 - Math.sqrt(r2) / HS; rho += q * q; rhoN += q * q * q; }
+      }
+      const P = K_P * (rho - RHO0), PN = K_N * rhoN;
+      let dxi = 0, dyi = 0;
+      for (let k = nbStart[i], e = nbStart[i + 1]; k < e; k++) {
+        const j = nb[k], dx = px[j] - xi, dy = py[j] - yi, r2 = dx * dx + dy * dy;
+        if (r2 < HS2 && r2 > 1e-8) {
+          const r = Math.sqrt(r2), q = 1 - r / HS;
+          const Dd = (P * q + PN * q * q) * 0.5, ux = dx / r * Dd, uy = dy / r * Dd;
+          px[j] += ux; py[j] += uy; dxi -= ux; dyi -= uy;
+        }
+      }
+      px[i] = xi + dxi; py[i] = yi + dyi;
+    }
+  }
+  collide(i) {
+    let x = this.px[i], y = this.py[i], hit = false, nx = 0, ny = 0;
+    const d = this.D.shape.sd(x, y, true);
+    if (d > -PR) { x -= OUT.nx * (d + PR); y -= OUT.ny * (d + PR); hit = true; nx = -OUT.nx; ny = -OUT.ny; }
+    const Q = this.D.quads;
+    for (let k = 0; k < Q.length; k++) {
+      if (pushPoly(Q[k], x, y, PR)) { x = OUT.x; y = OUT.y; hit = true; nx = OUT.nx; ny = OUT.ny; }
+    }
+    const R = this.caps;
+    for (let k = 0; k < R.length; k++) {
+      if (pushCap(R[k], x, y, PR)) { x = OUT.x; y = OUT.y; hit = true; nx = OUT.nx; ny = OUT.ny; this.capHits[k]++; this.touched[i] = 1; }
+    }
+    for (let r = 0; r < this.rotors.length; r++) {
+      const wh = this.rotors[r];
+      if (wh.hubCap && pushCap(wh.hubCap, x, y, PR)) { x = OUT.x; y = OUT.y; hit = true; nx = OUT.nx; ny = OUT.ny; }
+      for (let k = 0; k < wh.caps.length; k++) {
+        if (pushCap(wh.caps[k], x, y, PR)) {
+          this.rotHits[r]++; this.touched[i] = 1;
+          const dx = OUT.x - x, dy = OUT.y - y, rx = x - wh.cx, ry = y - wh.cy;
+          wh.tau -= rx * dy - ry * dx;            // the push on the oil pushes the paddle back
+          x = OUT.x; y = OUT.y; hit = true; nx = OUT.nx; ny = OUT.ny;
+        }
+      }
+    }
+    const pg = this.pass[i];
+    for (let k = 0; k < 2; k++) {
+      if (this.gateOpen[k] || pg === k) continue;
+      if (pushCap(this.gates[k], x, y, PR)) { x = OUT.x; y = OUT.y; hit = true; nx = OUT.nx; ny = OUT.ny; }
+    }
+    if (hit) {
+      // a fast drop hitting a surface head-on throws a few tiny droplets
+      const vx0 = this.vx[i], vy0 = this.vy[i], sp = Math.hypot(vx0, vy0);
+      if (sp > 0.7 && vx0 * nx + vy0 * ny < -0.55 * sp && this.impacts.length < 8 && !this.hold[i]) this.impacts.push([x, y, vx0, vy0, nx, ny]);
+      const mx = x - this.ox[i], my = y - this.oy[i], dn = mx * nx + my * ny;
+      x -= (mx - dn * nx) * FRIC; y -= (my - dn * ny) * FRIC;
+    }
+    this.px[i] = x; this.py[i] = y;
+  }
+  step() {
+    const { n, px, py, vx, vy, ox, oy, tx, ty, nb, nbStart, hold } = this;
+    const gx = this.gx * GRAV, gy = this.gy * GRAV, damp = 1 - this.drag;
+    for (let i = 0; i < n; i++) { vx[i] = (vx[i] + gx) * damp; vy[i] = (vy[i] + gy) * damp; }
+    if (this.hasNb) {
+      for (let i = 0; i < n; i++) {
+        let sx = 0, sy = 0;
+        for (let k = nbStart[i], e = nbStart[i + 1]; k < e; k++) {
+          const j = nb[k], dx = px[j] - px[i], dy = py[j] - py[i], r2 = dx * dx + dy * dy;
+          if (r2 < HS2) { const q = 1 - Math.sqrt(r2) / HS, w = q * q; sx += (vx[j] - vx[i]) * w; sy += (vy[j] - vy[i]) * w; }
+        }
+        tx[i] = sx; ty[i] = sy;
+      }
+      const xs = this.xsph;
+      for (let i = 0; i < n; i++) { vx[i] += xs * tx[i]; vy[i] += xs * ty[i]; }
+    }
+    for (let i = 0; i < n; i++) { ox[i] = px[i]; oy[i] = py[i]; px[i] += vx[i]; py[i] += vy[i]; }
+    this.buildNb();
+    this.relax();
+    for (let i = 0; i < n; i++) this.collide(i);
+    for (const r of this.rotors) r.integrate(this.gx, this.gy);
+    const hx = this.hx, hy = this.hy;      // a drop being born, held under the nozzle
+    for (let i = 0; i < n; i++) if (hold[i]) { px[i] += (hx - px[i]) * 0.035; py[i] += (hy - py[i]) * 0.035; }
+    const pass = this.pass, passT = this.passT;
+    for (let i = 0; i < n; i++) {
+      let ux = px[i] - ox[i], uy = py[i] - oy[i];
+      const s2 = ux * ux + uy * uy;
+      if (s2 > VMAX * VMAX) { const f = VMAX / Math.sqrt(s2); ux *= f; uy *= f; }
+      vx[i] = ux; vy[i] = uy;
+      if (pass[i] >= 0 && !hold[i] && --passT[i] <= 0) pass[i] = -1;
+    }
+  }
+}
+
+/* =====================================================================
+   4. Timer model: physics + clock + rotation (no rendering)
+   ===================================================================== */
+class TimerModel {
+  constructor(app, { cfg = {}, state = null, fresh = false }) {
+    this.app = app;
+    this.cfg = Object.assign({ x: 0, y: 0.25, scale: 1, duration: 180, sound: true, design: 'cross', palette: 'classic', glitter: false, view: { yaw: 0, pitch: 0 } }, cfg);
+    if (!DESIGN_DEFS[this.cfg.design]) this.cfg.design = 'cross';
+    if (!PALETTES[this.cfg.palette]) this.cfg.palette = 'classic';
+    this.theta = 0; this.omega = 0; this.target = 0; this.dragging = false;
+    this.views = new Set();
+    this.build();
+    if (state) this.restore(state); else this.fill(fresh ? 'top' : 'bottom');
+  }
+  build() {
+    this.D = getDesign(this.cfg.design);
+    this.nPer = this.D.nPer;
+    this.sims = [new Sim(this.nPer, 0, this.D), new Sim(this.nPer, 1, this.D)];
+    this.expect = [0, 0]; this.expGate = [-1, -1]; this.holdGoal = [0, 0]; this.stepAcc = 0; this.debt = [0, 0];
+    this.wasRunning = false; this.done = false; this.remaining = 0; this.chimedEarly = false; this.anyTop = false;
+  }
+  setDesign(id) {
+    if (id === this.cfg.design) return;
+    this.cfg.design = id;
+    this.build();
+    this.theta = this.target = Math.round(this.target / Math.PI) * Math.PI; this.omega = 0;
+    this.updateGravity();
+    // start right away with the oil on top
+    this.fill('top');
+    this.views.forEach(v => v.rebuildDesign());
+    this.app.save();
+  }
+  // 'top' = the chamber the oil runs out of in the current orientation (for
+  // rising oil that is the lower one); filled from where the oil settles
+  fill(where) {
+    const th = this.physTheta(), down = Math.cos(th) > 0;
+    this.sims.forEach((sim, c) => {
+      sim.n = 0;
+      let src = this.staticTopGate(c); if (src < 0) src = 0;
+      const k = where === 'top' ? src : 1 - src;
+      const slots = this.D.slots[c][k];
+      const ordered = down ? slots : slots.slice().reverse();
+      for (let k = 0; k < this.nPer; k++) sim.add(ordered[k][0] + (Math.random() - .5) * .3, ordered[k][1] + (Math.random() - .5) * .3);
+    });
+    this.expect = [0, 0]; this.expGate = [-1, -1]; this.debt = [0, 0];
+  }
+  serialize() {
+    const r = v => Math.round(v * 10) / 10;
+    return {
+      sims: this.sims.map(s => ({ px: Array.from(s.px.subarray(0, s.n), r), py: Array.from(s.py.subarray(0, s.n), r) })),
+      theta: this.target, expect: this.expect.map((e, c) => e + this.debt[c]), expGate: this.expGate.slice(),
+      wasRunning: this.wasRunning, done: this.done, runSide: this.runSide, t: Date.now(),
+    };
+  }
+  restore(st) {
+    if (!st || !st.sims || st.sims.some(s => s.px.length !== this.nPer)) { this.fill('bottom'); return; }
+    this.sims.forEach((sim, c) => { sim.n = 0; st.sims[c].px.forEach((x, i) => sim.add(x, st.sims[c].py[i])); });
+    const th = Math.round((st.theta || 0) / Math.PI) * Math.PI;
+    this.theta = this.target = th; this.omega = 0;
+    this.expect = st.expect || [0, 0]; this.expGate = st.expGate || [-1, -1]; this.debt = [0, 0];
+    this.wasRunning = !!st.wasRunning; this.done = !!st.done; this.runSide = st.runSide ?? Math.round(th / Math.PI);
+    this.updateGravity();
+    for (let k = 0; k < 120; k++) { this.updateGates(true); this.sims.forEach(s => s.step()); }
+    const away = (Date.now() - (st.t || Date.now())) / 1000;
+    if (away > 0.5) this.catchUp(Math.min(away, 36000), true);
+  }
+  setDuration(sec) { this.cfg.duration = sec; this.done = false; this.app.save(); }
+
+  dragStart(px, py, t) { this.dragging = true; this.omega = 0; this.pLast = { x: px, y: py, t }; }
+  dragMove(px, py, cx, cy, t) {
+    if (!this.dragging) return;
+    const rx = px - cx, ry = py - cy, dx = px - this.pLast.x, dy = py - this.pLast.y;
+    const rr = Math.max(rx * rx + ry * ry, 120 * 120);
+    let dth = (rx * dy - ry * dx) / rr;
+    const ax = Math.abs(rx);
+    if (ax < 70) dth += dy * (1 - ax / 70) / 240;
+    this.theta += dth;
+    const dt = Math.max(1, t - this.pLast.t) / 1000;
+    this.omega = this.omega * 0.6 + (dth / dt) * 0.4;
+    this.pLast = { x: px, y: py, t };
+  }
+  dragEnd(t) {
+    if (!this.dragging) return;
+    this.dragging = false;
+    if (t - this.pLast.t > 120) this.omega = 0;
+    const proj = this.theta + Math.max(-6, Math.min(6, this.omega)) * 0.32;
+    this.target = Math.round(proj / Math.PI) * Math.PI;
+  }
+  flip() { this.target = Math.round(this.target / Math.PI) * Math.PI + Math.PI; }
+  updateRotation(dt) {
+    if (this.dragging) return;
+    const K = 9, C = 5.4;
+    const steps = Math.ceil(dt / 0.008), h = dt / steps;
+    for (let i = 0; i < steps; i++) {
+      this.omega += (K * (this.target - this.theta) - C * this.omega) * h;
+      this.theta += this.omega * h;
+    }
+    if (Math.abs(this.target - this.theta) < 1e-4 && Math.abs(this.omega) < 1e-3) { this.theta = this.target; this.omega = 0; }
+  }
+  settled() {
+    if (this.dragging) return false;
+    const k = Math.round(this.theta / Math.PI);
+    return Math.abs(this.theta - k * Math.PI) < 0.07 && Math.abs(this.omega) < 0.6;
+  }
+  // oil lighter than the water around it (bubble type) feels gravity the other way
+  physTheta() { return this.theta + (this.D.def.buoyant ? Math.PI : 0); }
+  updateGravity() { const th = this.physTheta(), gx = Math.sin(th), gy = Math.cos(th); this.sims.forEach(s => { s.gx = gx; s.gy = gy; }); }
+  gateS(g) {
+    const rx = g.cx - CX, ry = g.cy - CY, th = this.physTheta();
+    return (rx * Math.sin(th) + ry * Math.cos(th)) / Math.hypot(rx, ry);
+  }
+  updateGates(force = false) {
+    const st = force || this.settled();
+    this.sims.forEach(s => { for (let k = 0; k < 2; k++) s.gateOpen[k] = st && this.gateS(s.gates[k]) > 0.3; });
+  }
+  staticTopGate(c) { for (let k = 0; k < 2; k++) if (this.gateS(this.D.gates[c][k]) < -0.6) return k; return -1; }
+  topGate(c) { return this.settled() ? this.staticTopGate(c) : -1; }
+
+  rate() { return this.nPer / this.cfg.duration; }
+  // oil through the nozzle never gets slower than a ~3.5 minute timer; on longer
+  // timers part of what lands is quietly returned to the top pool, so the pools
+  // fill and empty slowly while the drops keep their rhythm
+  flux() { return Math.max(this.rate(), this.nPer / 210); }
+  kDrop() { return Math.round(Math.max(3, Math.min(8, Math.round(this.flux() * 1.6))) * this.D.def.kScale); }
+  // move k settled particles from deep in the lower pool to the surface of the upper one
+  recycle(c, g, k) {
+    const s = this.sims[c], Gt = this.D.gates[c][g], Gb = this.D.gates[c][1 - g], gx = s.gx, gy = s.gy;
+    const low = [], top = [];
+    for (let i = 0; i < s.n; i++) {
+      if (s.hold[i]) continue;
+      const x = s.px[i], y = s.py[i], d = x * gx + y * gy;
+      if (inRegion(Gb, x, y)) { if (s.pass[i] < 0 || s.passT[i] < 220) low.push([d, i]); }
+      else if (s.pass[i] < 0 && inRegion(Gt, x, y)) top.push([d, i]);
+    }
+    low.sort((a, b) => b[0] - a[0]); top.sort((a, b) => a[0] - b[0]);
+    let moved = 0;
+    for (; moved < k && low.length; moved++) {
+      const [, i] = low.splice(Math.floor(Math.random() * Math.min(low.length, 4 + low.length / 3)), 1)[0];
+      let bx, by;
+      if (top.length) { const r = top[Math.floor(Math.random() * Math.min(top.length, 8))][1]; bx = s.px[r]; by = s.py[r]; }
+      else { bx = Gt.cx - gx * 10; by = Gt.cy - gy * 10; }
+      const j = (Math.random() - 0.5) * 2.4;
+      const x = bx - gx * 1.8 - gy * j, y = by - gy * 1.8 + gx * j;
+      s.px[i] = s.ox[i] = x; s.py[i] = s.oy[i] = y; s.vx[i] = s.vy[i] = 0;
+      s.pass[i] = -1; s.passT[i] = 0; s.touched[i] = 0;
+    }
+    return moved;
+  }
+  topCount(c, g) {
+    const s = this.sims[c], G = this.D.gates[c][g];
+    let n = 0;
+    for (let i = 0; i < s.n; i++) if (s.pass[i] < 0 && inRegion(G, s.px[i], s.py[i])) n++;
+    return n;
+  }
+  feedDrop(c, g, k) {
+    const s = this.sims[c], G = this.D.gates[c][g], cand = [];
+    for (let i = 0; i < s.n; i++) {
+      if (s.pass[i] >= 0 || !inRegion(G, s.px[i], s.py[i])) continue;
+      const dx = s.px[i] - G.cx, dy = s.py[i] - G.cy;
+      cand.push([dx * dx + dy * dy, i]);
+    }
+    cand.sort((a, b) => a[0] - b[0]);
+    for (let j = 0; j < Math.min(k, cand.length); j++) { const i = cand[j][1]; s.pass[i] = g; s.hold[i] = 1; }
+  }
+  heldCount(c) { const s = this.sims[c]; let n = 0; for (let i = 0; i < s.n; i++) n += s.hold[i]; return n; }
+  dropHeld(c) { const s = this.sims[c]; for (let i = 0; i < s.n; i++) if (s.hold[i]) { s.hold[i] = 0; s.passT[i] = 400; } }
+  // the clock is authoritative: expect[c] is how much oil should still be up top;
+  // oil gathers into a drop hanging at the nozzle, which lets go once it is big enough
+  tickTimer(dt) {
+    const rate = this.rate(), F = this.flux(), K = this.kDrop();
+    let anyTop = false, rem = 0;
+    for (let c = 0; c < 2; c++) {
+      const s = this.sims[c], g = this.topGate(c);
+      if (g < 0) { this.expGate[c] = -1; this.dropHeld(c); continue; }
+      anyTop = true;
+      const G = this.D.gates[c][g];
+      const j = this.jit?.[c] || 0;
+      s.hx = G.cx + s.gx * 7 + s.gy * j; s.hy = G.cy + s.gy * 7 - s.gx * j;
+      if (this.expGate[c] !== g) { this.expGate[c] = g; this.expect[c] = this.topCount(c, g); this.debt[c] = 0; this.holdGoal[c] = c ? Math.ceil(K / 2) : K; }
+      // what is owed back to the top pool (long timers) goes back as soon as there is oil below
+      if (this.debt[c] >= 1) { const k = this.recycle(c, g, Math.min(3, Math.floor(this.debt[c]))); this.debt[c] -= k; this.expect[c] += k; }
+      let n = this.topCount(c, g);
+      const total = this.expect[c] + this.debt[c];
+      this.expect[c] = Math.max(0, Math.min(this.expect[c], n) - F * dt);
+      this.debt[c] = Math.max(0, total - rate * dt - this.expect[c]);
+      const want = Math.min(4, Math.floor(n - this.expect[c]));
+      if (want > 0) { this.feedDrop(c, g, want); n -= want; }
+      const held = this.heldCount(c);
+      // the last drop clings to the nozzle until the clock runs out
+      if (held >= this.holdGoal[c] || (n === 0 && held > 0 && (this.expect[c] + this.debt[c]) / rate < 0.8)) { this.dropHeld(c); this.holdGoal[c] = K; (this.jit ||= [0, 0])[c] = (Math.random() - 0.5) * 8; }
+      rem = Math.max(rem, (this.expect[c] + this.debt[c]) / rate);
+    }
+    if (anyTop) {
+      const side = Math.round(this.theta / Math.PI);
+      if (rem > 1e-4) {
+        if (!this.wasRunning) this.chimedEarly = false;
+        this.wasRunning = true; this.runSide = side; this.done = false;
+        this.remaining = rem;
+      } else if (this.wasRunning) {
+        this.wasRunning = false; this.remaining = 0;
+        if (side === this.runSide) this.finish();
+      }
+    }
+    this.anyTop = anyTop;
+  }
+  finish() {
+    this.done = true;
+    if (this.cfg.sound && !this.chimedEarly) this.app.chime();
+    this.chimedEarly = false;
+  }
+  catchUp(sec, quiet = false) {
+    const rate = this.rate();
+    let moved = false;
+    for (let c = 0; c < 2; c++) {
+      const s = this.sims[c];
+      const g = this.topGate(c) >= 0 ? this.topGate(c) : (quiet ? this.staticTopGate(c) : -1);
+      if (g < 0) continue;
+      this.dropHeld(c);
+      const G = this.D.gates[c][g], cand = [];
+      for (let i = 0; i < s.n; i++) {
+        if (inRegion(G, s.px[i], s.py[i])) { const dx = s.px[i] - G.cx, dy = s.py[i] - G.cy; cand.push([dx * dx + dy * dy, i]); }
+      }
+      if (this.expGate[c] !== g) { this.expGate[c] = g; this.expect[c] = cand.length; this.debt[c] = 0; }
+      this.expect[c] = Math.min(cand.length, Math.max(0, this.expect[c] + this.debt[c] - rate * sec)); this.debt[c] = 0;
+      const k = cand.length - Math.ceil(this.expect[c]);
+      if (k <= 0) continue;
+      cand.sort((a, b) => a[0] - b[0]);
+      const slots = this.D.slots[c][1 - g];
+      const sorted = s.gy > 0 ? slots : slots.slice().reverse();
+      let si = 0;
+      for (let j = 0; j < k; j++) {
+        const i = cand[j][1];
+        while (si < sorted.length) {
+          const p = sorted[si++];
+          let free = true;
+          for (let q = 0; q < s.n && free; q++) { const dx = s.px[q] - p[0], dy = s.py[q] - p[1]; if (dx * dx + dy * dy < 12) free = false; }
+          if (free) { s.px[i] = s.ox[i] = p[0]; s.py[i] = s.oy[i] = p[1]; s.vx[i] = s.vy[i] = 0; s.pass[i] = -1; break; }
+        }
+      }
+      moved = true;
+    }
+    if (moved) for (let k = 0; k < 60; k++) { this.updateGates(true); this.sims.forEach(s => s.step()); }
+  }
+  remainingFromState() { return Math.max(...this.expect.map((e, c) => this.expGate[c] >= 0 ? e + this.debt[c] : 0)) / this.rate(); }
+  update(dt) {
+    if (dt > 0.5) { this.catchUp(dt); dt = 0.016; }
+    dt = Math.min(dt, 0.05);
+    this.updateRotation(dt);
+    this.updateGravity();
+    this.updateGates();
+    this.stepAcc += dt * STEPS_PER_SEC;
+    let k = 0;
+    while (this.stepAcc >= 1 && k < 8) { this.sims[0].step(); this.sims[1].step(); this.stepAcc -= 1; k++; }
+    if (this.stepAcc > 2) this.stepAcc = 0;
+    this.tickTimer(dt);
+  }
+}
+
+/* =====================================================================
+   5. Looks and rendering.
+   Render order per frame (each layer sees the layers behind it):
+     buffer A  = back layer  (wall, its shadow, back pane, blue glitter)
+     buffer B  = A + blue layer (blue oil, blue stairs/wheel)
+     final     = B + front layer (red oil, red parts, plates, frame, front pane)
+   Glass and oil refract the buffer behind them, so oil is seen bent
+   through the glass and through the other colour, with dispersion.
+   ===================================================================== */
+const PALETTES = {
+  classic: { name: 'ブルー × レッド', c: [
+    { att: [0.15, 0.56, 1.0], emi: [0.03, 0.18, 0.50], lite: [0.42, 0.80, 1.0], wall: [0.58, 0.78, 1.0], sw: '#2f7cf5' },
+    { att: [1.0, 0.15, 0.10], emi: [0.50, 0.06, 0.03], lite: [1.0, 0.50, 0.40], wall: [1.0, 0.62, 0.58], sw: '#e5402f' }] },
+  mint: { name: 'ミント × レモン', c: [
+    { att: [0.03, 0.80, 0.68], emi: [0.0, 0.30, 0.24], lite: [0.35, 1.0, 0.85], wall: [0.55, 0.95, 0.85], sw: '#13c2a4' },
+    { att: [1.0, 0.80, 0.04], emi: [0.50, 0.36, 0.0], lite: [1.0, 0.92, 0.40], wall: [1.0, 0.92, 0.55], sw: '#f7c80d' }] },
+  berry: { name: 'ラベンダー × ピンク', c: [
+    { att: [0.42, 0.14, 1.0], emi: [0.20, 0.05, 0.50], lite: [0.75, 0.52, 1.0], wall: [0.78, 0.64, 1.0], sw: '#7a3cf2' },
+    { att: [1.0, 0.16, 0.55], emi: [0.55, 0.05, 0.25], lite: [1.0, 0.55, 0.80], wall: [1.0, 0.62, 0.80], sw: '#ef3d8c' }] },
+  forest: { name: 'グリーン × アンバー', c: [
+    { att: [0.10, 0.82, 0.18], emi: [0.04, 0.36, 0.06], lite: [0.50, 1.0, 0.45], wall: [0.62, 0.95, 0.60], sw: '#2fbf3a' },
+    { att: [1.0, 0.42, 0.04], emi: [0.55, 0.18, 0.0], lite: [1.0, 0.72, 0.32], wall: [1.0, 0.78, 0.52], sw: '#f2780c' }] },
+  ink: { name: 'インディゴ × スモーク', c: [
+    { att: [0.10, 0.16, 0.55], emi: [0.03, 0.05, 0.22], lite: [0.45, 0.55, 0.95], wall: [0.62, 0.68, 0.90], sw: '#22307e' },
+    { att: [0.30, 0.30, 0.33], emi: [0.06, 0.06, 0.07], lite: [0.75, 0.75, 0.80], wall: [0.70, 0.70, 0.72], sw: '#4a4c52' }] },
+};
+const PALETTE_ORDER = ['classic', 'mint', 'berry', 'forest', 'ink'];
+
+const U = 0.01;
+const TIME = { value: 0 };
+const sw = (x, y) => [(x - CX) * U, (CY - y) * U];          // sim -> world (local)
+const WALL_Z = -1.0;                                          // seamless white backdrop behind the timer
+const Z = { back: -0.20, front: 0.20, blue: -0.07, red: 0.07 };
+const L_BACK = 0, L_BLUE = 1, L_FRONT = 2, L_GLASS = 3;
+const THEMES = {
+  light: { wall: 0xeef0f3, clear: 0xf0f1f4, env: 0.6, hemi: 0.75, spot: 18, shadow: 0.10, dark: 0, bloom: 0.06, scatter: 0.10, glow: 0.12 },
+  dark: { wall: 0x1b1e24, clear: 0x15171b, env: 0.75, hemi: 0.16, spot: 16, shadow: 0.5, dark: 1, bloom: 0.3, scatter: 0.14, glow: 0.55 },
+};
+// real studio light probe (Poly Haven, CC0), streamed from their CDN; a built-in studio is used until it arrives
+const HDRI_URL = 'https://dl.polyhaven.org/file/ph-assets/HDRIs/hdr/1k/studio_small_09_1k.hdr';
+let HDRI_PROMISE = null;
+function loadHdri() {
+  if (!HDRI_PROMISE) HDRI_PROMISE = new RGBELoader().loadAsync(HDRI_URL).then(t => { t.mapping = THREE.EquirectangularReflectionMapping; return t; });
+  return HDRI_PROMISE;
+}
+
+function studioEnvironment(renderer) {
+  const sc = new THREE.Scene();
+  const basic = (c, side = THREE.FrontSide) => new THREE.MeshBasicMaterial({ color: new THREE.Color(c, c, c * 1.03), side });
+  sc.add(new THREE.Mesh(new THREE.BoxGeometry(24, 16, 24), basic(0.16, THREE.BackSide)));
+  const panel = (w, h, pos, k) => {
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), basic(k, THREE.DoubleSide));
+    m.position.set(...pos); m.lookAt(0, 0, 0); sc.add(m);
+  };
+  panel(6.5, 4.2, [-5.5, 5.5, 6], 9);
+  panel(1.1, 9, [7.5, 0.5, 3.5], 5);
+  panel(12, 1.6, [0, 7.5, -3], 3);
+  panel(10, 3, [0, -7.5, 4], 0.9);
+  panel(3, 3, [-6, -1, -6], 1.6);
+  const pm = new THREE.PMREMGenerator(renderer);
+  const tex = pm.fromScene(sc, 0.015).texture;
+  pm.dispose();
+  return tex;
+}
+
+function roundedRect(path, w, h, r) {
+  const x = -w / 2, y = -h / 2;
+  path.moveTo(x + r, y);
+  path.lineTo(x + w - r, y); path.absarc(x + w - r, y + r, r, -Math.PI / 2, 0, false);
+  path.lineTo(x + w, y + h - r); path.absarc(x + w - r, y + h - r, r, 0, Math.PI / 2, false);
+  path.lineTo(x + r, y + h); path.absarc(x + r, y + h - r, r, Math.PI / 2, Math.PI, false);
+  path.lineTo(x, y + r); path.absarc(x + r, y + r, r, Math.PI, Math.PI * 1.5, false);
+  return path;
+}
+function capsuleShape(a, b, r) {
+  const ang = Math.atan2(b[1] - a[1], b[0] - a[0]);
+  const s = new THREE.Shape();
+  s.absarc(b[0], b[1], r, ang - Math.PI / 2, ang + Math.PI / 2, false);
+  s.absarc(a[0], a[1], r, ang + Math.PI / 2, ang + Math.PI * 1.5, false);
+  return s;
+}
+function circleShape(c, r) { const s = new THREE.Shape(); s.absarc(c[0], c[1], r, 0, Math.PI * 2, false); return s; }
+function extrude(shapes, depth, z, bevel = 0.012, size = 0.006, seg = 6) {
+  const g = new THREE.ExtrudeGeometry(shapes, { depth, bevelEnabled: true, bevelThickness: bevel, bevelSize: size, bevelSegments: seg, curveSegments: 24 });
+  g.translate(0, 0, z - depth / 2);
+  return g;
+}
+
+const GLSL_NOISE = `
+float hash21(vec2 p){ p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
+float vnoise(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3. - 2. * f);
+  return mix(mix(hash21(i), hash21(i + vec2(1, 0)), f.x), mix(hash21(i + vec2(0, 1)), hash21(i + vec2(1, 1)), f.x), f.y); }
+float fbm(vec2 p){ float a = .5, s = 0.; for (int i = 0; i < 4; i++) { s += a * vnoise(p); p = p * 2.03 + 17.1; a *= .5; } return s; }
+`;
+
+// additive light that leaves the alpha alone (works on a transparent desktop window too)
+const ADD_LIGHT = {
+  blending: THREE.CustomBlending, blendEquation: THREE.AddEquation,
+  blendSrc: THREE.SrcAlphaFactor, blendDst: THREE.OneFactor, blendSrcAlpha: THREE.ZeroFactor, blendDstAlpha: THREE.OneFactor,
+};
+// shared geometry + stateless materials (usable by every renderer)
+let SHARED = null;
+function shared() {
+  if (SHARED) return SHARED;
+  const S = {};
+  // threaded steel pivot pins
+  S.pinGeo = mergeGeometries([new THREE.CylinderGeometry(0.058, 0.058, 0.2, 48, 1)].concat(
+    [-0.055, -0.03, -0.005, 0.02, 0.045].map(y => new THREE.TorusGeometry(0.059, 0.006, 8, 48).rotateX(Math.PI / 2).translate(0, y, 0))));
+  S.axleGeo = new THREE.CylinderGeometry(0.035, 0.035, 0.34, 32, 1).rotateX(Math.PI / 2);
+  S.oilGeo = new THREE.PlaneGeometry(W * U, H * U, 192, 368);
+  S.overlayGeo = new THREE.PlaneGeometry(W * U, H * U);
+  S.bubbleGeo = new THREE.SphereGeometry(1, 16, 12);
+  S.flakeGeo = new THREE.CircleGeometry(1, 6);
+  S.sprayGeo = new THREE.SphereGeometry(1, 12, 9);
+
+  // reflection-only surfaces (back pane): black base, additive -> just the Fresnel reflection
+  S.reflMat = new THREE.MeshPhysicalMaterial({
+    color: 0x000000, metalness: 0, roughness: 0.02, envMapIntensity: 1.3, specularIntensity: 1,
+    transparent: true, ...ADD_LIGHT, depthWrite: false,
+  });
+  // front pane: reflection plus the small imperfections of real glass (smudges, dust, fine scratches)
+  S.frontMat = new THREE.MeshPhysicalMaterial({
+    color: 0x000000, metalness: 0, roughness: 0.02, envMapIntensity: 1.5, specularIntensity: 1,
+    transparent: true, ...ADD_LIGHT, depthWrite: false,
+  });
+  S.frontMat.onBeforeCompile = sh => {
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec2 vPP;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvPP = position.xy;');
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', '#include <common>\nvarying vec2 vPP;\n' + GLSL_NOISE)
+      .replace('#include <opaque_fragment>', `
+        float sm = smoothstep(.5, .78, fbm(vPP * 2.6 + 7.)) * smoothstep(.25, .75, fbm(vPP * 11. + 3.));
+        float dust = step(.9975, hash21(floor(vPP * 150.)));
+        float scr = smoothstep(.992, 1., abs(sin(dot(vPP, vec2(.83, .55)) * 700. + fbm(vPP * 18.) * 7.))) * smoothstep(.62, .8, fbm(vPP * 1.7 + 11.));
+        outgoingLight *= .78 + .9 * sm;
+        outgoingLight += vec3(sm * .008 + dust * .05 + scr * .018);
+        #include <opaque_fragment>`);
+  };
+  // the inside of the back face of the glass body, seen from the front
+  S.backSlabMat = new THREE.MeshPhysicalMaterial({ color: 0xf2f6f7, roughness: 0.08, transparent: true, opacity: 0.08, depthWrite: false, envMapIntensity: 0.7, side: THREE.BackSide });
+  // inner walls of the cavity: faint, glassy, seen at an angle
+  S.backSlabMatDesk = S.backSlabMat.clone(); S.backSlabMatDesk.opacity = 0.06;
+  S.cavWallMat = new THREE.MeshPhysicalMaterial({ color: 0xe8f1f3, roughness: 0.05, transparent: true, opacity: 0.16, depthWrite: false, envMapIntensity: 1.2, side: THREE.DoubleSide });
+  S.cavWallRefl = new THREE.MeshPhysicalMaterial({ color: 0x000000, roughness: 0.02, envMapIntensity: 1.4, transparent: true, ...ADD_LIGHT, depthWrite: false, side: THREE.DoubleSide });
+  S.pinMat = new THREE.MeshPhysicalMaterial({ color: 0xdfe3e8, metalness: 1, roughness: 0.16, clearcoat: 0.6, clearcoatRoughness: 0.08 });
+  S.flakeMat = new THREE.MeshPhysicalMaterial({
+    color: 0xffffff, metalness: 1, roughness: 0.3, iridescence: 1, iridescenceIOR: 1.8, iridescenceThicknessRange: [200, 700],
+    side: THREE.DoubleSide, envMapIntensity: 3, emissive: 0xffffff, emissiveIntensity: 0.35,
+  });
+  S.bubbleMat = new THREE.MeshPhysicalMaterial({ color: 0xffffff, roughness: 0, transparent: true, opacity: 0.1, depthWrite: false, envMapIntensity: 2 });
+  S.bubbleMat.onBeforeCompile = sh => {
+    sh.fragmentShader = sh.fragmentShader.replace('#include <dithering_fragment>', `#include <dithering_fragment>
+      float rim = pow(1. - abs(dot(normalize(normal), normalize(vViewPosition))), 1.5);
+      gl_FragColor.rgb += rim * .5 + .08; gl_FragColor.a = clamp(gl_FragColor.a + rim * .85, 0., 1.);`);
+  };
+  SHARED = S;
+  return S;
+}
+
+/* Refractive glass: the base material contributes only its reflections; the
+   light coming through is taken from the buffer of what lies behind, bent by
+   the surface normal (stronger on the bevels), split slightly by colour
+   (dispersion), tinted green-blue toward the edges like thick acrylic, and
+   darkened where rays bend past the critical angle at the rims. */
+const GLASS_PARS = `
+uniform sampler2D uBuf; uniform vec2 uRes; uniform vec3 uTint, uEdge; uniform float uRefract, uChroma, uAbsorb;
+float glassA = 1.;
+`;
+const GLASS_MAIN = `{
+  vec2 suv = gl_FragCoord.xy / uRes;
+  vec3 vdir = normalize(vViewPosition);
+  float edge = 1. - clamp(abs(dot(normal, vdir)), 0., 1.);
+  vec2 off = normal.xy * uRefract * (.25 + edge * 1.8);
+  vec3 bg = vec3(texture2D(uBuf, suv - off * (1. - uChroma)).r,
+                 texture2D(uBuf, suv - off).g,
+                 texture2D(uBuf, suv - off * (1. + uChroma)).b);
+  float F = .04 + .96 * pow(edge, 5.);
+  vec3 tint = mix(uTint, uEdge, smoothstep(.2, .9, edge));
+  float tir = smoothstep(.6, .9, edge);                 // a crisp dark outline where light bends away
+  outgoingLight += bg * tint * (1. - F) * (1. - tir * uAbsorb);
+  glassA = 1. - (1. - texture2D(uBuf, suv - off).a) * (1. - F) * (1. - tir * uAbsorb) * dot(tint, vec3(.333));
+}
+`;
+function makeGlass(buf, res, o) {
+  const m = new THREE.MeshPhysicalMaterial({
+    color: 0x000000, metalness: 0, roughness: o.rough ?? 0.012, specularIntensity: 1, envMapIntensity: o.env ?? 1.15,
+    clearcoat: o.coat ?? 0, clearcoatRoughness: 0.02,
+  });
+  const u = {
+    uBuf: buf, uRes: res,
+    uTint: { value: new THREE.Color(...o.tint) }, uEdge: { value: new THREE.Color(...o.edge) },
+    uRefract: { value: o.refract }, uChroma: { value: o.chroma }, uAbsorb: { value: o.absorb },
+  };
+  m.userData.u = u;
+  m.onBeforeCompile = sh => {
+    Object.assign(sh.uniforms, u);
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', '#include <common>\n' + GLASS_PARS)
+      .replace('#include <opaque_fragment>', GLASS_MAIN + '#include <opaque_fragment>\ngl_FragColor.a = glassA;');
+  };
+  return m;
+}
+
+/* The front plate: everything is seen through it. On top of the refraction it
+   adds a faint body tint and haze, a thicker, darker zone and a bright line where
+   the plate meets the frame, a broad soft reflection of the studio window, and
+   the small marks of real glass (smudges, dust, fine scratches). */
+function makeFrontGlass(buf, res, cavU, clear = false) {
+  // on the desktop (nothing behind it) the plate is kept clearer and less reflective
+  const m = makeGlass(buf, res, { tint: [0.988, 0.992, 0.992], edge: [0.6, 0.64, 0.66], refract: 0.02, chroma: 0.08, absorb: 0.45, coat: clear ? 0.4 : 1, env: clear ? 0.6 : 1.1 });
+  const base = m.onBeforeCompile;
+  m.onBeforeCompile = sh => {
+    base(sh);
+    Object.assign(sh.uniforms, cavU);
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec2 vPP;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvPP = position.xy;');
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', '#include <common>\nvarying vec2 vPP;\n' + GLSL_NOISE + CAV_GLSL)
+      .replace('#include <opaque_fragment>', `{
+        float sd = cavSd(vec2(vPP.x * 100. + 120., 230. - vPP.y * 100.)) * .01;   // world units, < 0 inside the cavity
+        float rim = smoothstep(-.11, 0., sd) * step(sd, 0.);
+        outgoingLight *= 1. - rim * rim * .10;                                 // the glass thickens toward the walls
+        outgoingLight *= 1. - .42 * exp(-pow((sd - .003) / .0028, 2.));        // crisp dark line: the cavity wall seen edge-on
+        outgoingLight *= 1. - .18 * exp(-pow((sd - .02) / .006, 2.));
+        outgoingLight += vec3(.55) * exp(-pow((sd + .005) / .0035, 2.));       // bright line along the cavity wall
+        outgoingLight += vec3(.10) * exp(-pow((sd + .03) / .012, 2.));
+        outgoingLight += vec3(.06) * exp(-pow((sd - .03) / .02, 2.));          // light caught inside the solid border
+        float d = dot(vPP, normalize(vec2(.62, .78)));
+        outgoingLight += vec3(.045) * smoothstep(-1.9, -.9, d) * smoothstep(.2, -.6, d);   // soft window reflection
+        float sm = smoothstep(.5, .78, fbm(vPP * 2.6 + 7.)) * smoothstep(.25, .75, fbm(vPP * 11. + 3.));
+        float dust = step(.9975, hash21(floor(vPP * 150.)));
+        float scr = smoothstep(.992, 1., abs(sin(dot(vPP, vec2(.83, .55)) * 700. + fbm(vPP * 18.) * 7.))) * smoothstep(.62, .8, fbm(vPP * 1.7 + 11.));
+        outgoingLight += vec3(sm * .012 + dust * .05 + scr * .02);
+      }
+      #include <opaque_fragment>`);
+  };
+  return m;
+}
+
+/* A solid, puffy glass body around any (star-shaped) outline: a slightly
+   domed face, fully rounded sides (no straight extrusion), domed back. */
+function makePillow(outlineSim, Dh = 0.30, e = 0.24, bulge = 0.035) {
+  const n = outlineSim.length, P = outlineSim.map(p => sw(...p));
+  const N = P.map((p, i) => {
+    const a = P[(i - 1 + n) % n], b = P[(i + 1) % n];
+    let nx = b[1] - a[1], ny = -(b[0] - a[0]); const l = Math.hypot(nx, ny) || 1; nx /= l; ny /= l;
+    if (nx * p[0] + ny * p[1] < 0) { nx = -nx; ny = -ny; }
+    return [nx, ny];
+  });
+  const O = P.map((p, i) => [p[0] + N[i][0] * BORDER * U, p[1] + N[i][1] * BORDER * U]);
+  const rows = [], nf = 12, na = 16;
+  for (let k = 0; k <= nf; k++) rows.push({ s: k / nf, z: Dh + bulge * (1 - (k / nf) ** 2) });
+  for (let k = 1; k <= na; k++) { const a = k / na * Math.PI / 2; rows.push({ inset: e * (1 - Math.sin(a)), z: Dh - e + e * Math.cos(a) }); }
+  if (Dh - e > 1e-4) rows.push({ inset: 0, z: -(Dh - e) });
+  for (let k = na - 1; k >= 0; k--) { const a = k / na * Math.PI / 2; rows.push({ inset: e * (1 - Math.sin(a)), z: -(Dh - e + e * Math.cos(a)) }); }
+  for (let k = nf - 1; k >= 0; k--) rows.push({ s: k / nf, z: -(Dh + bulge * (1 - (k / nf) ** 2)) });
+  const pos = new Float32Array(rows.length * n * 3);
+  rows.forEach((r, ri) => {
+    for (let i = 0; i < n; i++) {
+      const o = O[i], nn = N[i], q = (ri * n + i) * 3;
+      if (r.s !== undefined) { pos[q] = (o[0] - nn[0] * e) * r.s; pos[q + 1] = (o[1] - nn[1] * e) * r.s; }
+      else { pos[q] = o[0] - nn[0] * r.inset; pos[q + 1] = o[1] - nn[1] * r.inset; }
+      pos[q + 2] = r.z;
+    }
+  });
+  const idx = [];
+  for (let r = 0; r < rows.length - 1; r++) for (let i = 0; i < n; i++) {
+    const a = r * n + i, b = r * n + (i + 1) % n, c = (r + 1) * n + i, d = (r + 1) * n + (i + 1) % n;
+    idx.push(a, c, b, b, c, d);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  g.setIndex(idx);
+  g.computeVertexNormals();
+  if (g.attributes.normal.getZ(n * 2) < 0) {          // make the faces point outward
+    for (let k = 0; k < idx.length; k += 3) { const t = idx[k + 1]; idx[k + 1] = idx[k + 2]; idx[k + 2] = t; }
+    g.setIndex(idx); g.computeVertexNormals();
+  }
+  return g;
+}
+// the inner walls of the cavity, as a thin glassy band
+function makeCavityWall(outlineSim, zc) {
+  const n = outlineSim.length, pos = new Float32Array(n * 2 * 3), idx = [];
+  outlineSim.forEach((p, i) => {
+    const [x, y] = sw(...p);
+    pos.set([x, y, zc, x, y, -zc], i * 6);
+    const a = i * 2, b = ((i + 1) % n) * 2;
+    idx.push(a, a + 1, b, b, a + 1, b + 1);
+  });
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setIndex(idx); g.computeVertexNormals();
+  return g;
+}
+// distance field of a container as a texture, for the shaders
+const SHAPE_TEX = {};
+function shapeTex(S) {
+  if (SHAPE_TEX[S.key]) return SHAPE_TEX[S.key];
+  const t = new THREE.DataTexture(S.sdf.data, S.sdf.gw, S.sdf.gh, THREE.RedFormat, THREE.FloatType);
+  t.minFilter = t.magFilter = THREE.LinearFilter; t.needsUpdate = true;
+  return (SHAPE_TEX[S.key] = t);
+}
+const CAV_GLSL = `
+uniform sampler2D uCav; uniform vec2 uCavN; uniform float uCavPad, uCavRes, uBorder;
+float cavSd(vec2 sim){ vec2 uv = ((sim + uCavPad) / uCavRes + .5) / uCavN; return texture2D(uCav, uv).r; }
+`;
+function cavUniforms() {
+  return { uCav: { value: null }, uCavN: { value: new THREE.Vector2(1, 1) }, uCavPad: { value: SDF_PAD }, uCavRes: { value: SDF_RES }, uBorder: { value: BORDER } };
+}
+function setCavUniforms(u, S) { u.uCav.value = shapeTex(S); u.uCavN.value.set(S.sdf.gw, S.sdf.gh); }
+
+// per-design glass parts, built once
+const DESIGN_GEO = {};
+function designGeo(id) {
+  if (DESIGN_GEO[id]) return DESIGN_GEO[id];
+  const D = getDesign(id), G = {}, S = D.shape;
+  const layerZ = [Z.blue, Z.red];
+  G.body = makePillow(S.outline);
+  G.cavWall = makeCavityWall(S.outline, 0.215);
+  if (D.centerWall) G.centerWall = extrude(capsuleShape(sw(...D.centerWall[0]), sw(...D.centerWall[1]), 0.016), 0.40, 0, 0.02, 0.006, 6);
+  G.plates = mergeGeometries(D.quadsRaw.map(q => extrude(new THREE.Shape(q.map(p => new THREE.Vector2(...sw(...p)))), 0.40, 0, 0.022, 0.008, 6)));
+  const gy = D.hole[1], px = S.wallX(gy - 18, false) + 15;
+  const posts = [[[px, gy - 9], [px, gy - 27]]].flatMap(s => [s, s.map(mX)]).flatMap(s => [s, s.map(mY)]);
+  G.posts = mergeGeometries(posts.map(s => extrude(capsuleShape(sw(...s[0]), sw(...s[1]), 0.022), 0.06, 0, 0.03, 0.006, 6)));
+  G.pinY = (CY - (S.topY - BORDER)) * U + 0.07;
+  G.parts = [0, 1].map(c => {
+    const shapes = D.rampsRaw[c].map(s => capsuleShape(sw(...s[0]), sw(...s[1]), RAMP_R * U - 0.009))
+      .concat(D.pegsRaw[c].map(p => circleShape(sw(...p), PEG_R * U - 0.009)));
+    return shapes.length ? extrude(shapes, 0.03, layerZ[c], 0.03, 0.008, 8) : null;
+  });
+  // turning parts, built around their own pivot
+  G.rotors = [0, 1].map(c => D.rotors[c].map(r => {
+    const shapes = r.segs.map(([p, q, w]) => capsuleShape([p[0] * U, -p[1] * U], [q[0] * U, -q[1] * U], w * U - 0.005));
+    if (r.hub > 0) shapes.push(circleShape([0, 0], r.hub * U));
+    return { geo: mergeGeometries(shapes.map(sh => extrude(sh, 0.05, layerZ[c], 0.014, 0.005, 5))), at: sw(r.cx, r.cy) };
+  }));
+  return (DESIGN_GEO[id] = G);
+}
+// silhouette of the glass parts (for their shadows and caustics), in field coordinates
+const DESIGN_MASK = {};
+function designMask(id) {
+  if (DESIGN_MASK[id]) return DESIGN_MASK[id];
+  const D = getDesign(id), k = 2;
+  const cv = document.createElement('canvas');
+  cv.width = (W + 2 * M) * k; cv.height = (H + 2 * M) * k;
+  const g = cv.getContext('2d');
+  g.fillStyle = '#000'; g.fillRect(0, 0, cv.width, cv.height);
+  g.setTransform(k, 0, 0, k, M * k, M * k);
+  g.fillStyle = '#fff'; g.strokeStyle = '#fff'; g.lineCap = 'round';
+  for (const q of D.quadsRaw) { g.beginPath(); q.forEach((p, i) => i ? g.lineTo(...p) : g.moveTo(...p)); g.closePath(); g.fill(); }
+  g.lineWidth = RAMP_R * 2;
+  for (const c of [0, 1]) {
+    for (const s of D.rampsRaw[c]) { g.beginPath(); g.moveTo(...s[0]); g.lineTo(...s[1]); g.stroke(); }
+    for (const p of D.pegsRaw[c]) { g.beginPath(); g.arc(p[0], p[1], PEG_R, 0, Math.PI * 2); g.fill(); }
+  }
+  if (D.centerWall) { g.lineWidth = 4; g.beginPath(); g.moveTo(...D.centerWall[0]); g.lineTo(...D.centerWall[1]); g.stroke(); }
+  for (const r of D.rotors.flat()) if (r.hub > 0) { g.beginPath(); g.arc(r.cx, r.cy, r.hub, 0, Math.PI * 2); g.fill(); }
+  const tex = new THREE.CanvasTexture(cv);
+  tex.generateMipmaps = true; tex.minFilter = THREE.LinearMipmapLinearFilter; tex.magFilter = THREE.LinearFilter;
+  return (DESIGN_MASK[id] = tex);
+}
+
+const OIL_PARS = `
+uniform sampler2D uField; uniform vec4 uChan; uniform vec2 uFU; uniform float uM, uT, uLod, uThick; uniform vec2 uTexel;
+varying vec2 vOilUv;
+vec2 oilUv(vec2 p){ return vec2((p.x * 100. + 120. + uM) / uFU.x, 1. - (230. - p.y * 100. + uM) / uFU.y); }
+float oilH(vec2 uv){ float f = dot(textureLod(uField, uv, uLod), uChan); float h = clamp((f - uT * .35) / (uT * 3.), 0., 1.); return sqrt(h * (2. - h)); }
+vec3 oilN(vec2 uv, float k){
+  vec2 e = uTexel * k;
+  float hx = (oilH(uv + vec2(e.x, 0.)) - oilH(uv - vec2(e.x, 0.))) / (2. * e.x * uFU.x * .01);
+  float hy = (oilH(uv + vec2(0., e.y)) - oilH(uv - vec2(0., e.y))) / (2. * e.y * uFU.y * .01);
+  return normalize(vec3(-hx * uThick, -hy * uThick, 1.));
+}
+`;
+const OIL_PARS_F = `
+uniform mat3 uOilNM; uniform vec3 uLite, uAtt; uniform float uTime, uDensity, uRefract, uScatter;
+uniform sampler2D uBuf; uniform vec2 uRes;
+uniform vec2 uGravUv; uniform vec3 uAtt2; float oilThk = 1.; float oilHf = 0.; float oilNz = .5; float oilMix = 0.; float oilOut = 1.; float oilRim = 0.; float oilVein = 0.;
+` + GLSL_NOISE;
+/* The oil as a volume: a lens whose thickness follows the drop's dome. What is
+   behind it is refracted (with a touch of dispersion) and absorbed per colour
+   channel (Beer-Lambert); light scattered inside the gel gives it body; the
+   surface adds clear-coat reflections and a glow where light is focused. */
+const OIL_MAIN = `{
+  vec2 suv = gl_FragCoord.xy / uRes;
+  vec3 vdir = normalize(vViewPosition);
+  float ndv = clamp(dot(normal, vdir), 0., 1.);
+  float F = .04 + .96 * pow(1. - ndv, 5.);
+  vec2 off = normal.xy * uRefract * (.35 + oilThk);
+  vec3 bg = vec3(texture2D(uBuf, suv - off * .98).r, texture2D(uBuf, suv - off).g, texture2D(uBuf, suv - off * 1.02).b);
+  vec3 T = pow(mix(uAtt, uAtt2, oilMix * .9), vec3(uDensity * (oilThk + oilRim * .9 + oilVein * .5)));
+  vec3 scat = uLite * (1. - exp(-oilThk * 1.6)) * uScatter * (.45 + .55 * clamp(dot(normal, normalize(vec3(-.4, .6, .7))), 0., 1.));
+  outgoingLight += (bg * T + scat) * (1. - F);
+  oilOut = 1. - (1. - texture2D(uBuf, suv - off).a) * dot(T, vec3(.333)) * (1. - F);
+}
+`;
+function makeOilMaterial(uniforms) {
+  const m = new THREE.MeshPhysicalMaterial({
+    color: 0x000000, metalness: 0, roughness: 0.035, specularIntensity: 1,
+    clearcoat: 0.45, clearcoatRoughness: 0.02, envMapIntensity: 0.5,
+    emissive: new THREE.Color(), emissiveIntensity: 0, alphaToCoverage: true,
+  });
+  m.onBeforeCompile = sh => {
+    Object.assign(sh.uniforms, uniforms);
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', '#include <common>\n' + OIL_PARS)
+      .replace('#include <beginnormal_vertex>', `
+        vOilUv = oilUv(position.xy);
+        float oilDisp = oilH(vOilUv) * uThick;
+        vec3 objectNormal = oilN(vOilUv, 2.);
+        #ifdef USE_TANGENT
+          vec3 objectTangent = vec3( tangent.xyz );
+        #endif`)
+      .replace('#include <begin_vertex>', 'vec3 transformed = vec3(position.xy, position.z + oilDisp);');
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', '#include <common>\n' + OIL_PARS + OIL_PARS_F)
+      .replace('#include <color_fragment>', `#include <color_fragment>
+        float oilF = dot(texture2D(uField, vOilUv), uChan);
+        vec2 simP = vec2(vOilUv.x * uFU.x - uM, (1. - vOilUv.y) * uFU.y - uM);
+        // a living surface: the outline ripples slowly
+        float tW = uT * (1. + .24 * (vnoise(simP * .09 + vec2(uTime * .5, -uTime * .35)) - .5));
+        float oilAA = max(fwidth(oilF) * .8, 1e-4);
+        float oilA = smoothstep(tW - oilAA, tW + oilAA, oilF);
+        if (oilA < .02) discard;
+        diffuseColor.a = oilA;
+        oilHf = oilH(vOilUv);
+        oilRim = 1. - smoothstep(tW, tW * 2.3, oilF);          // meniscus: a darker line along the edge
+        vec2 oq = vOilUv * uFU * .022;
+        oilNz = fbm(oq + vec2(uTime * .03, -uTime * .02) + fbm(oq * .7 - uTime * .015) * 1.6);
+        oilThk = (.07 + oilHf * 1.25) * (.7 + .6 * oilNz);
+        // in the chambers, near the centre line, swirls of the other colour (marbling)
+        float inCh = 1. - smoothstep(112., 140., min(simP.y, 460. - simP.y));
+        float seam = inCh * (1. - smoothstep(4., 62., abs(simP.x - 120.)));
+        float swirl = fbm(vec2(simP.x * .03, simP.y * .075) + vec2(uTime * .012, 0.) + fbm(simP * .022 + uTime * .008) * 2.);
+        oilMix = seam * smoothstep(.36, .64, swirl);
+        oilVein = seam * exp(-pow((swirl - .5) / .05, 2.));      // soft darker streaks where the colours fold
+        // deeper below the surface: lighter near the top of a pool, richer toward its floor
+        float fUp = dot(textureLod(uField, vOilUv - uGravUv * 14., uLod), uChan);
+        oilThk *= mix(.55, 1.2, smoothstep(.25, 1.3, fUp));`)
+      .replace('#include <normal_fragment_begin>', `#include <normal_fragment_begin>
+        normal = normalize(uOilNM * oilN(vOilUv, 1.4));
+        nonPerturbedNormal = normal;`)
+      .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+        totalEmissiveRadiance *= (.35 + oilHf) * (1. - .5 * pow(oilHf, 3.));
+        {
+          vec2 nl = normal.xy; float tl = length(nl);
+          float away = tl > 1e-3 ? dot(nl / tl, normalize(vec2(.55, -.75))) : 0.;
+          totalEmissiveRadiance += uLite * smoothstep(.1, .95, away) * smoothstep(.08, .7, tl) * (1. - oilHf * .6) * .55;
+          totalEmissiveRadiance += uLite * smoothstep(.5, .85, oilNz) * oilHf * .2;
+        }`)
+      .replace('#include <opaque_fragment>', OIL_MAIN + '#include <opaque_fragment>\ngl_FragColor.a *= oilOut;');
+  };
+  return m;
+}
+
+const SPLAT_VS = `
+attribute float aC; varying float vC;
+uniform vec2 uView; uniform float uM, uSize;
+void main(){
+  vec2 p = (position.xy + uM) / uView;
+  gl_Position = vec4(p.x * 2. - 1., 1. - p.y * 2., 0., 1.);
+  gl_PointSize = uSize; vC = aC;
+}`;
+const SPLAT_FS = `
+varying float vC;
+void main(){
+  vec2 d = gl_PointCoord * 2. - 1.; float r2 = dot(d, d);
+  if (r2 > 1.) discard;
+  float w = 1. - r2; w = w * w * w;
+  gl_FragColor = vC < .5 ? vec4(w, 0., 0., 0.) : vec4(0., w, 0., 0.);
+}`;
+// light through the oil converges under each drop: caustic = negative curvature of the blurred field
+const CAUSTIC_GLSL = `
+vec2 fuv(vec2 sim){ return vec2((sim.x + uM) / uFU.x, 1. - (sim.y + uM) / uFU.y); }
+vec2 caustic(vec2 uv, float lod, float e){
+  vec2 dx = vec2(e / uFU.x, 0.), dy = vec2(0., e / uFU.y);
+  vec4 c = textureLod(uField, uv, lod);
+  vec4 l = textureLod(uField, uv + dx, lod) + textureLod(uField, uv - dx, lod) + textureLod(uField, uv + dy, lod) + textureLod(uField, uv - dy, lod) - 4. * c;
+  vec4 big = textureLod(uField, uv, lod + 2.5);           // large pools: no focusing
+  return max(vec2(0.), -l.rg) * (1. - smoothstep(.35, .9, big.rg)) * smoothstep(.2, .6, c.rg);
+}
+`;
+const WALL_VS = `
+varying vec2 vW;
+void main(){ vec4 w = modelMatrix * vec4(position, 1.); vW = w.xy; gl_Position = projectionMatrix * viewMatrix * w; }`;
+const WALL_FS = `
+uniform sampler2D uField, uMask; uniform vec2 uC, uOff, uFU; uniform float uTheta, uScale, uM, uLod, uStrength, uColor, uCaus, uDark, uSquash;
+uniform vec3 uTintA, uTintB;
+varying vec2 vW;
+` + CAUSTIC_GLSL + CAV_GLSL + `
+vec2 toSim(vec2 off){
+  vec2 d = vW - uC - off;
+  d.x /= uSquash;                      // turned sideways, the timer throws a narrower shadow
+  float c = cos(uTheta), s = sin(uTheta);
+  vec2 l = vec2(c * d.x - s * d.y, s * d.x + c * d.y) / uScale;
+  return vec2(l.x * 100. + 120., 230. - l.y * 100.);
+}
+void main(){
+  vec2 s1 = toSim(uOff);
+  float sd = cavSd(s1) - uBorder;
+  float body = 1. - smoothstep(-40., 90., sd);
+  float sh = body * uStrength;
+  float sd2 = cavSd(toSim(uOff * .55)) - uBorder;
+  sh += (1. - smoothstep(-12., 30., sd2)) * uStrength * .45;
+  vec2 uv = fuv(toSim(uOff * 1.1));
+  vec4 f = textureLod(uField, uv, uLod);
+  float m = textureLod(uMask, uv, 4.).r;
+  vec3 t = vec3(1. - sh - m * uStrength * .5);
+  t *= mix(vec3(1.), uTintA, smoothstep(.08, 1.4, f.r) * uColor);
+  t *= mix(vec3(1.), uTintB, smoothstep(.08, 1.4, f.g) * uColor);
+  vec2 cs = caustic(uv, uLod - .4, 9.);
+  t += (uTintA * cs.x + uTintB * cs.y) * uCaus;
+  // the thick glass rim focuses light into a bright band just inside its shadow
+  t += exp(-pow((sd + 18.) / 16., 2.)) * .04 * (1. - uDark * .6);
+  gl_FragColor = vec4(t, 1.);
+}`;
+// inside the case: oil and glass parts throw coloured shadows and caustics on the back pane
+const BACK_VS = `
+varying vec2 vUv;
+void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.); }`;
+const BACK_FS = `
+uniform sampler2D uField, uMask; uniform vec2 uFU, uOffB, uOffR; uniform float uM, uLod, uCaus, uStrength;
+uniform vec3 uTintA, uTintB;
+varying vec2 vUv;
+` + CAUSTIC_GLSL + `
+void main(){
+  vec2 sim = vec2(vUv.x * 240., (1. - vUv.y) * 460.);
+  vec2 ub = fuv(sim - uOffB), ur = fuv(sim - uOffR);
+  float fb = textureLod(uField, ub, uLod).r, fr = textureLod(uField, ur, uLod + .4).g;
+  vec3 t = vec3(1.);
+  t *= mix(vec3(1.), uTintA * .82, smoothstep(.15, 1.3, fb) * uStrength);
+  t *= mix(vec3(1.), uTintB * .82, smoothstep(.15, 1.3, fr) * uStrength);
+  t += uTintA * caustic(ub, uLod - .6, 5.).x * uCaus + uTintB * caustic(ur, uLod - .3, 6.).y * uCaus;
+  // glass parts: soft shadow with a bright line focused through their rounded edge, and contact shading
+  float soft = textureLod(uMask, fuv(sim - uOffR * .7), 3.).r, sharp = textureLod(uMask, fuv(sim - uOffR * .7), 1.).r;
+  float contact = textureLod(uMask, fuv(sim), 3.6).r;
+  t *= 1. - soft * .14 - contact * .10;
+  t += max(0., sharp - soft) * .35;
+  gl_FragColor = vec4(t, 1.);
+}`;
+const GRAIN_SHADER = {
+  uniforms: { tDiffuse: { value: null }, uTime: { value: 0 }, uGrain: { value: 0.018 }, uVig: { value: 0.12 } },
+  vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.); }',
+  fragmentShader: `uniform sampler2D tDiffuse; uniform float uTime, uGrain, uVig; varying vec2 vUv;
+    void main(){
+      vec4 c = texture2D(tDiffuse, vUv);
+      float n = fract(sin(dot(vUv * 1000. + uTime * 7.1, vec2(12.9898, 78.233))) * 43758.5453);
+      c.rgb += (n - .5) * uGrain * (c.rgb + .05);
+      c.rgb *= 1. - uVig * smoothstep(.35, 1.0, length((vUv - .5) * vec2(1.25, 1.)));
+      gl_FragColor = c;
+    }`,
+};
+
+/* one rendered instance of a timer inside a stage */
+class TimerView {
+  constructor(stage, model, pinned = false) {
+    this.stage = stage; this.model = model; this.pinned = pinned;
+    const S = shared();
+    // root: position + hovering tilt toward the pointer;  group: the timer's own turn
+    this.root = new THREE.Group();
+    const g = this.group = new THREE.Group();
+    this.root.add(g);
+    stage.scene.add(this.root);
+    this.tilt = { x: 0, y: 0 }; this.va = { yaw: 0, pitch: 0 };
+    this.root.rotation.order = 'YXZ';
+    const A = stage.uBufA, B = stage.uBufB, R = stage.uRes;
+    this.mats = {
+      frame: makeGlass(stage.uBufC, R, { tint: [0.985, 0.99, 0.99], edge: [0.5, 0.55, 0.58], refract: 0.07, chroma: 0.14, absorb: 0.75, coat: 1, env: 1.3 }),
+      front: makeFrontGlass(stage.uBufC, R, this.cavU = cavUniforms(), stage.transparent),
+      plate: makeGlass(B, R, { tint: [0.985, 0.99, 0.99], edge: [0.5, 0.56, 0.6], refract: 0.04, chroma: 0.12, absorb: 0.8, env: 1.4 }),
+      stair: [A, B].map(buf => makeGlass(buf, R, { tint: [0.985, 0.99, 0.99], edge: [0.42, 0.48, 0.52], refract: 0.05, chroma: 0.12, absorb: 0.85, env: 1.6 })),
+      wheel: [A, B].map(buf => makeGlass(buf, R, { tint: [1, 1, 1], edge: [0.5, 0.5, 0.5], refract: 0.03, chroma: 0.08, absorb: 0.5 })),
+    };
+    this.add = (geo, mat, layer, order = 0) => { const m = new THREE.Mesh(geo, mat); m.layers.set(layer); m.renderOrder = order; g.add(m); return m; };
+    const add = this.add;
+
+    this.fppu = 2.4;
+    const fw = Math.round((W + 2 * M) * this.fppu), fh = Math.round((H + 2 * M) * this.fppu);
+    this.rt = new THREE.WebGLRenderTarget(fw, fh, {
+      type: THREE.HalfFloatType, format: THREE.RGBAFormat, depthBuffer: false,
+      generateMipmaps: true, minFilter: THREE.LinearMipmapLinearFilter, magFilter: THREE.LinearFilter,
+    });
+    this.splatMat = new THREE.ShaderMaterial({
+      vertexShader: SPLAT_VS, fragmentShader: SPLAT_FS,
+      uniforms: { uView: { value: new THREE.Vector2(W + 2 * M, H + 2 * M) }, uM: { value: M }, uSize: { value: 7.6 * 2 * this.fppu } },
+      blending: THREE.CustomBlending, blendEquation: THREE.AddEquation,
+      blendSrc: THREE.OneFactor, blendDst: THREE.OneFactor, blendSrcAlpha: THREE.OneFactor, blendDstAlpha: THREE.OneFactor,
+      depthTest: false, depthWrite: false, transparent: true,
+    });
+    this.splatScene = new THREE.Scene();
+    this.splatCam = new THREE.OrthographicCamera();
+
+    const lod = Math.log2(3.5 * this.fppu);
+    const FU = new THREE.Vector2(W + 2 * M, H + 2 * M);
+    const common = {
+      uField: { value: this.rt.texture }, uFU: { value: FU }, uM: { value: M },
+      uT: { value: 0.55 }, uLod: { value: lod }, uTexel: { value: new THREE.Vector2(1 / fw, 1 / fh) }, uThick: { value: 0.15 },
+    };
+    this.gravUv = { value: new THREE.Vector2() };   // gravity, as a step in field uv per sim unit
+    this.oil = [0, 1].map(c => {
+      const u = Object.assign({}, common, {
+        uChan: { value: new THREE.Vector4(c ? 0 : 1, c ? 1 : 0, 0, 0) }, uOilNM: { value: new THREE.Matrix3() },
+        uLite: { value: new THREE.Color() }, uAtt: { value: new THREE.Color() }, uAtt2: { value: new THREE.Color() }, uTime: TIME,
+        uDensity: { value: 2.3 }, uGravUv: this.gravUv, uRefract: { value: 0.035 }, uScatter: { value: 0.1 },
+        uBuf: c ? B : A, uRes: R,
+      });
+      const mat = makeOilMaterial(u);
+      const mesh = add(S.oilGeo, mat, c ? L_FRONT : L_BLUE);
+      mesh.position.z = (c ? Z.red : Z.blue) - 0.075;
+      mesh.frustumCulled = false;
+      const mv = new THREE.Matrix4();
+      mesh.onBeforeRender = (r, sc, cam) => { mv.multiplyMatrices(cam.matrixWorldInverse, mesh.matrixWorld); u.uOilNM.value.getNormalMatrix(mv); };
+      return { mesh, mat, u };
+    });
+
+    const blend = { blending: THREE.CustomBlending, blendEquation: THREE.AddEquation, blendSrc: THREE.DstColorFactor, blendDst: THREE.ZeroFactor, depthWrite: false, toneMapped: false };
+    // shadows, coloured light and caustics on the back pane
+    this.backU = {
+      uField: { value: this.rt.texture }, uMask: { value: null }, uFU: { value: FU }, uM: { value: M }, uLod: { value: lod + 0.6 },
+      uOffB: { value: new THREE.Vector2() }, uOffR: { value: new THREE.Vector2() }, uCaus: { value: 0.45 }, uStrength: { value: 0.32 },
+      uTintA: { value: new THREE.Color() }, uTintB: { value: new THREE.Color() },
+    };
+    const bo = add(S.overlayGeo, new THREE.ShaderMaterial(Object.assign({ vertexShader: BACK_VS, fragmentShader: BACK_FS, uniforms: this.backU }, blend)), L_BACK, 1);
+    bo.position.z = Z.back + 0.003;
+    // soft shadow, coloured light and caustics on the wall
+    this.wallU = {
+      uField: { value: this.rt.texture }, uMask: { value: null }, uC: { value: new THREE.Vector2() }, uOff: { value: new THREE.Vector2(0.03, -0.16) },
+      uFU: { value: FU }, uM: { value: M }, uTheta: { value: 0 }, uScale: { value: 1 }, uLod: { value: lod + 2.2 },
+      uStrength: { value: 0.14 }, uColor: { value: 0.12 }, uCaus: { value: 0.25 }, uDark: { value: 0 }, uSquash: { value: 1 },
+      uTintA: { value: new THREE.Color() }, uTintB: { value: new THREE.Color() },
+    };
+    this.wallCav = cavUniforms(); Object.assign(this.wallU, this.wallCav);
+    this.shadow = new THREE.Mesh(new THREE.PlaneGeometry(14, 14), new THREE.ShaderMaterial(Object.assign({ vertexShader: WALL_VS, fragmentShader: WALL_FS, uniforms: this.wallU }, blend)));
+    this.shadow.renderOrder = 1; this.shadow.layers.set(L_BACK);
+    this.shadow.visible = !stage.transparent;
+    stage.scene.add(this.shadow);
+    this.sprayMats = [0, 1].map(() => new THREE.MeshPhysicalMaterial({ color: 0xffffff, roughness: 0.04, clearcoat: 1, clearcoatRoughness: 0.03, transparent: true, opacity: 0.85, envMapIntensity: 1.2, depthWrite: false }));
+    this.lastT = 0;
+    this.design = [];
+    this.rebuildDesign();
+    this.applyTheme();
+    this.ui = new TimerUI(this);
+  }
+  // design-specific parts: stairs / pegs / wheels, bubbles, glitter and the particle buffer
+  rebuildDesign() {
+    const S = shared(), m = this.model, n = m.nPer, G = designGeo(m.cfg.design);
+    this.design.forEach(o => { o.parent.remove(o); if (o.isInstancedMesh) o.dispose(); });
+    this.design = [];
+    const add = (geo, mat, layer, order = 0) => { const o = this.add(geo, mat, layer, order); this.design.push(o); return o; };
+    // the container: puffy solid glass (front refracts everything inside, back closes it), inner walls, plates, posts, pins
+    add(G.body, this.mats.front, L_GLASS);
+    add(G.body, this.stage.transparent ? S.backSlabMatDesk : S.backSlabMat, L_BACK, 1);
+    add(G.cavWall, S.cavWallMat, L_FRONT, 6); add(G.cavWall, S.cavWallRefl, L_FRONT, 9);
+    add(G.plates, this.mats.plate, L_FRONT);
+    add(G.posts, this.mats.plate, L_FRONT);
+    if (G.centerWall) add(G.centerWall, this.mats.plate, L_FRONT);
+    for (const sy of [1, -1]) { const p = add(S.pinGeo, S.pinMat, L_BACK); p.position.set(0, sy * G.pinY, 0); }
+    setCavUniforms(this.cavU, m.D.shape); setCavUniforms(this.wallCav, m.D.shape);
+    G.parts.forEach((geo, c) => { if (geo) add(geo, this.mats.stair[c], c ? L_FRONT : L_BLUE); });
+    this.rotorMeshes = G.rotors.map((list, c) => list.map(r => {
+      const o = add(r.geo, this.mats.wheel[c], c ? L_FRONT : L_BLUE); o.position.x = r.at[0]; o.position.y = r.at[1];
+      const ax = add(S.axleGeo, S.pinMat, L_BACK); ax.position.set(r.at[0], r.at[1], 0);
+      return o;
+    }));
+    const mask = designMask(m.cfg.design);
+    this.backU.uMask.value = mask; this.wallU.uMask.value = mask;
+    if (this.splatGeo) this.splatGeo.dispose();
+    this.splatScene.clear();
+    const pos = new Float32Array(n * 2 * 3), col = new Float32Array(n * 2);
+    for (let i = 0; i < n * 2; i++) col[i] = i < n ? 0 : 1;
+    this.splatGeo = new THREE.BufferGeometry();
+    this.splatGeo.setAttribute('position', new THREE.BufferAttribute(pos, 3).setUsage(THREE.DynamicDrawUsage));
+    this.splatGeo.setAttribute('aC', new THREE.BufferAttribute(col, 1));
+    const pts = new THREE.Points(this.splatGeo, this.splatMat); pts.frustumCulled = false;
+    this.splatScene.add(pts);
+    const pick = (mod, rem) => { const idx = []; for (let i = 0; i < n; i++) if ((i * 7919) % mod === rem) idx.push(i); return idx; };
+    const inst = (geo, mat, count, layer, order) => {
+      const im = new THREE.InstancedMesh(geo, mat, count);
+      im.layers.set(layer); im.renderOrder = order; im.frustumCulled = false;
+      this.group.add(im); this.design.push(im); return im;
+    };
+    this.bubbles = [0, 1].map(c => {
+      const idx = pick(11, 3);
+      return { im: inst(S.bubbleGeo, S.bubbleMat, idx.length, c ? L_FRONT : L_BLUE, 5), idx, sizes: idx.map(() => 0.0035 + Math.random() * 0.008), z: (c ? Z.red : Z.blue) - 0.075 };
+    });
+    // glitter sits inside the oil, one layer back, so the oil refracts and tints it
+    // splash spray: tiny glossy droplets thrown up where a drop lands
+    this.spray = [0, 1].map(c => {
+      const N = 48, im = inst(S.sprayGeo, this.sprayMats[c], N, c ? L_FRONT : L_BLUE, 5);
+      return { im, N, p: new Float32Array(N * 3), v: new Float32Array(N * 3), life: new Float32Array(N), size: new Float32Array(N), next: 0, z: (c ? Z.red : Z.blue) };
+    });
+    this.flakes = [0, 1].map(c => {
+      const idx = pick(4, 1);
+      return {
+        im: inst(S.flakeGeo, S.flakeMat, idx.length, c ? L_BLUE : L_BACK, 0), idx, z: (c ? Z.red : Z.blue) - 0.075,
+        rot: idx.map(() => new THREE.Euler(Math.random() * 6, Math.random() * 6, Math.random() * 6)),
+        spin: idx.map(() => new THREE.Vector3((Math.random() - .5) * 2, (Math.random() - .5) * 2, (Math.random() - .5) * 2)),
+        depth: idx.map(() => 0.03 + Math.random() * 0.08), size: idx.map(() => 0.006 + Math.random() * 0.007),
+      };
+    });
+    this.applyPalette();
+  }
+  applyPalette() {
+    const P = PALETTES[this.model.cfg.palette] || PALETTES.classic;
+    this.sprayMats.forEach((mt, c) => mt.color.setRGB(...P.c[c].att.map(v => 0.15 + v * 0.75)));
+    this.oil.forEach((o, c) => {
+      const p = P.c[c];
+      o.u.uAtt.value.setRGB(...p.att); o.u.uAtt2.value.setRGB(...P.c[1 - c].att);
+      o.mat.emissive.setRGB(...p.emi);
+      o.u.uLite.value.setRGB(...p.lite);
+    });
+    for (const U2 of [this.wallU, this.backU]) { U2.uTintA.value.setRGB(...P.c[0].wall); U2.uTintB.value.setRGB(...P.c[1].wall); }
+    this.flakes?.forEach(f => { f.im.visible = !!this.model.cfg.glitter; });
+    // tinted acrylic wheels, like the plastic water wheels of real timers
+    this.mats.wheel.forEach((m, c) => {
+      const l = P.c[c].lite;
+      m.userData.u.uTint.value.setRGB(...l.map(v => 0.25 + v * 0.75));
+      m.userData.u.uEdge.value.setRGB(...l.map(v => v * 0.55));
+    });
+  }
+  applyTheme() {
+    const th = THEMES[this.stage.app.theme];
+    this.wallU.uStrength.value = th.shadow; this.wallU.uDark.value = th.dark;
+    this.wallU.uColor.value = th.dark ? 0.03 : 0.035; this.wallU.uCaus.value = 0.08;
+    this.oil.forEach(o => { o.mat.emissiveIntensity = th.glow; o.u.uScatter.value = th.scatter; });
+  }
+  pos() { return this.pinned ? [0, 0] : [this.model.cfg.x, this.model.cfg.y]; }
+  scale() { return this.pinned ? 1 : this.model.cfg.scale; }
+  update(renderer, t, ptr) {
+    const m = this.model, [x, y] = this.pos(), s = this.scale();
+    // only a slow, gentle sway of its own (it no longer follows the pointer)
+    const tx = Math.sin(t * 0.43 + x) * 0.035, ty = Math.cos(t * 0.37 + y) * 0.03;
+    this.tilt.x += (tx - this.tilt.x) * 0.06; this.tilt.y += (ty - this.tilt.y) * 0.06;
+    this.root.position.set(x, y + Math.sin(t * 0.9 + x * 2) * 0.012, 0.05 * s);
+    // viewing angle chosen by the user (front / angled / side / free), eased
+    const tv = m.cfg.view || { yaw: 0, pitch: 0 };
+    this.va.yaw += (tv.yaw - this.va.yaw) * 0.08; this.va.pitch += (tv.pitch - this.va.pitch) * 0.08;
+    const side = Math.min(1, Math.abs(this.va.yaw) / 1.2);
+    this.root.rotation.set(this.va.pitch + this.tilt.y * (1 - side * 0.7), this.va.yaw + this.tilt.x * (1 - side * 0.7), 0);
+    this.wallU.uSquash.value = Math.max(0.3, Math.abs(Math.cos(this.va.yaw)));
+    this.group.rotation.z = -m.theta;
+    // keep the whole timer inside the frame while it turns (shrinks a little mid-turn, then grows back)
+    const st = this.stage, ext = m.D.shape.ext;
+    const bw = (ext.w + 2 * BORDER) * U, bh = (ext.h + 2 * BORDER) * U + 0.3, cs = Math.abs(Math.cos(m.theta)), sn0 = Math.abs(Math.sin(m.theta));
+    const rw = (bw * cs + bh * sn0) * Math.abs(Math.cos(this.va.yaw)) + 0.6 * Math.abs(Math.sin(this.va.yaw)), rh = bw * sn0 + bh * cs;
+    const halfW = st.viewH * st.camera.aspect / 2, halfH = st.viewH / 2;
+    const aw = this.pinned ? halfW * 2 : 2 * Math.max(0.5, halfW - Math.abs(x)), padW = st.padBottom * st.viewH / st.win.innerHeight,
+      ah = this.pinned ? halfH * 2 - (padW ? padW + 0.35 : 0.7) : 2 * Math.max(0.5, halfH - padW / 2 - Math.abs(y)) - 0.2;
+    const fit = Math.min(1, aw * 0.95 / (rw * s), ah * 0.95 / (rh * s));
+    this.fit = (this.fit ?? fit) + (fit - (this.fit ?? fit)) * 0.25;
+    const sf = s * this.fit;
+    this.group.scale.setScalar(sf);
+    this.shadow.position.set(x, y, WALL_Z + 0.002);
+    this.shadow.scale.setScalar(sf);
+    this.wallU.uC.value.set(x - this.tilt.x * 0.25, y + this.tilt.y * 0.25);
+    this.wallU.uTheta.value = m.theta; this.wallU.uScale.value = sf;
+    // light direction (down-right in the world) expressed on the back pane, in sim units
+    const c = Math.cos(m.theta), sn = Math.sin(m.theta), dx = 0.566, dy = -0.824;
+    const lx = c * dx - sn * dy, ly = sn * dx + c * dy;
+    this.backU.uOffB.value.set(lx * 4, -ly * 4);
+    this.backU.uOffR.value.set(lx * 9, -ly * 9);
+    this.rotorMeshes.forEach((list, k) => list.forEach((o, j) => { o.rotation.z = -m.sims[k].rotors[j].phi; }));
+    const mtx = new THREE.Matrix4(), q = new THREE.Quaternion(), v = new THREE.Vector3(), sc = new THREE.Vector3();
+    const inside = (sim, i) => Math.max(0, Math.min(1, (sim.nbStart[i + 1] - sim.nbStart[i] - 12) / 5));
+    this.bubbles.forEach((b, k) => {
+      const sim = m.sims[k];
+      b.idx.forEach((i, j) => {
+        const r = b.sizes[j] * inside(sim, i);
+        mtx.makeScale(r, r, r * 0.5).setPosition((sim.px[i] - CX) * U, (CY - sim.py[i]) * U, b.z + 0.152);
+        b.im.setMatrixAt(j, mtx);
+      });
+      b.im.instanceMatrix.needsUpdate = true;
+    });
+    if (m.cfg.glitter) this.flakes.forEach((f, k) => {
+      const sim = m.sims[k];
+      f.idx.forEach((i, j) => {
+        const e = f.rot[j], sp = f.spin[j];
+        e.x += sp.x * 0.01; e.y += sp.y * 0.01; e.z += sp.z * 0.01;
+        const r = f.size[j] * inside(sim, i);
+        q.setFromEuler(e); v.set((sim.px[i] - CX) * U, (CY - sim.py[i]) * U, f.z + f.depth[j]); sc.set(r, r, r);
+        mtx.compose(v, q, sc);
+        f.im.setMatrixAt(j, mtx);
+      });
+      f.im.instanceMatrix.needsUpdate = true;
+    });
+    this.gravUv.value.set(m.sims[0].gx / (W + 2 * M), -m.sims[0].gy / (H + 2 * M));
+    this.updateSpray(t);
+    const p = this.splatGeo.attributes.position.array;
+    let n = 0;
+    for (const sim of m.sims) for (let i = 0; i < sim.n; i++) { p[n * 3] = sim.px[i]; p[n * 3 + 1] = sim.py[i]; n++; }
+    this.splatGeo.attributes.position.needsUpdate = true;
+    this.splatGeo.setDrawRange(0, n);
+    const prevClear = renderer.getClearColor(new THREE.Color()), prevAlpha = renderer.getClearAlpha();
+    renderer.setRenderTarget(this.rt);
+    renderer.setClearColor(0x000000, 0); renderer.clear();
+    renderer.render(this.splatScene, this.splatCam);
+    renderer.setRenderTarget(null);
+    renderer.setClearColor(prevClear, prevAlpha);
+    this.ui.update();
+  }
+  updateSpray(t) {
+    const dt = Math.min(0.05, Math.max(0, t - this.lastT)); this.lastT = t;
+    const mtx = new THREE.Matrix4();
+    this.spray.forEach((sp, c) => {
+      const sim = this.model.sims[c];
+      for (const [x, y, vx, vy, nx, ny] of sim.impacts) {
+        // reflect the incoming motion off the surface and scatter it
+        const dn = vx * nx + vy * ny, rx = vx - 2 * dn * nx, ry = vy - 2 * dn * ny;
+        for (let k = 0; k < 2; k++) {
+          const i = sp.next; sp.next = (sp.next + 1) % sp.N;
+          const a = (Math.random() - 0.5) * 1.6, cs = Math.cos(a), sn = Math.sin(a), sc = (0.25 + Math.random() * 0.35) * 180 * U;
+          const ex = (rx * cs - ry * sn) * sc, ey = (rx * sn + ry * cs) * sc;
+          sp.p[i * 3] = (x - CX) * U; sp.p[i * 3 + 1] = (CY - y) * U; sp.p[i * 3 + 2] = sp.z + (Math.random() - 0.5) * 0.08;
+          sp.v[i * 3] = ex; sp.v[i * 3 + 1] = -ey; sp.v[i * 3 + 2] = 0;
+          sp.life[i] = 0.25 + Math.random() * 0.3; sp.size[i] = 0.004 + Math.random() * 0.006;
+        }
+      }
+      sim.impacts.length = 0;
+      const gx = sim.gx * 2.2, gy = -sim.gy * 2.2;       // gravity in the timer's own frame
+      for (let i = 0; i < sp.N; i++) {
+        let r = 0;
+        if (sp.life[i] > 0) {
+          sp.life[i] -= dt;
+          sp.v[i * 3] = (sp.v[i * 3] + gx * dt) * 0.96; sp.v[i * 3 + 1] = (sp.v[i * 3 + 1] + gy * dt) * 0.96;
+          sp.p[i * 3] += sp.v[i * 3] * dt; sp.p[i * 3 + 1] += sp.v[i * 3 + 1] * dt;
+          r = sp.size[i] * Math.min(1, sp.life[i] * 6);
+        }
+        mtx.makeScale(r, r, r).setPosition(sp.p[i * 3], sp.p[i * 3 + 1], sp.p[i * 3 + 2]);
+        sp.im.setMatrixAt(i, mtx);
+      }
+      sp.im.instanceMatrix.needsUpdate = true;
+    });
+  }
+  contains(world) {
+    const l = this.group.worldToLocal(world.clone());
+    return this.model.D.shape.sd(l.x / U + CX, CY - l.y / U) < BORDER + 4;
+  }
+  setVisible(v) { this.root.visible = v; this.shadow.visible = v && !this.stage.transparent; this.ui.el.style.display = v ? '' : 'none'; }
+  dispose() {
+    this.stage.scene.remove(this.root); this.stage.scene.remove(this.shadow);
+    this.design.forEach(o => { if (o.isInstancedMesh) o.dispose(); });
+    this.rt.dispose(); this.splatGeo.dispose(); this.splatMat.dispose();
+    this.oil.forEach(o => o.mat.dispose());
+    Object.values(this.mats).flat().forEach(m => m.dispose());
+    this.shadow.material.dispose(); this.shadow.geometry.dispose();
+    this.ui.el.remove();
+  }
+}
+/* =====================================================================
+   6. HUD per view (DOM overlay that follows the 3D object)
+   ===================================================================== */
+const ICONS = {
+  sound: '<svg viewBox="0 0 24 24"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11"/></svg>',
+  pip: '<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2.5"/><rect x="12" y="11" width="7" height="6" rx="1.2"/></svg>',
+  minus: '<svg viewBox="0 0 24 24"><path d="M6 12h12"/></svg>',
+  plus: '<svg viewBox="0 0 24 24"><path d="M12 6v12M6 12h12"/></svg>',
+  close: '<svg viewBox="0 0 24 24"><path d="M7 7l10 10M17 7L7 17"/></svg>',
+  flip: '<svg viewBox="0 0 24 24"><path d="M19.4 9A8 8 0 0 0 5.6 6.8M4.6 15a8 8 0 0 0 13.8 2.2"/><path d="M5 3.5v3.6h3.6M19 20.5v-3.6h-3.6"/><path d="M9.5 7.5h5l-2.5 4.5 2.5 4.5h-5l2.5-4.5z"/></svg>',
+  glitter: '<svg viewBox="0 0 24 24"><path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M18.5 15.5l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z"/></svg>',
+};
+Object.assign(ICONS, {
+  cube: '<svg viewBox="0 0 24 24"><path d="M12 3 4 7.5v9L12 21l8-4.5v-9z"/><path d="M4 7.5 12 12l8-4.5M12 12v9"/></svg>',
+  timer: '<svg viewBox="0 0 24 24"><circle cx="12" cy="13.5" r="7.5"/><path d="M12 9.5v4l2.6 2M10 2.5h4M12 2.5V6"/></svg>',
+  zoomIn: '<svg viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 20 20M10.5 7.8v5.4M7.8 10.5h5.4"/></svg>',
+  zoomOut: '<svg viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 20 20M7.8 10.5h5.4"/></svg>',
+  edit: '<svg viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/></svg>',
+  turnL: '<svg viewBox="0 0 24 24"><path d="M19 12c0 2.2-3.1 4-7 4s-7-1.8-7-4 3.1-4 7-4"/><path d="M9.5 5.5 12 8l-2.5 2.5"/></svg>',
+  turnR: '<svg viewBox="0 0 24 24"><g transform="matrix(-1 0 0 1 24 0)"><path d="M19 12c0 2.2-3.1 4-7 4s-7-1.8-7-4 3.1-4 7-4"/><path d="M9.5 5.5 12 8l-2.5 2.5"/></g></svg>',
+  v_front: '<svg viewBox="0 0 24 24"><rect x="7" y="3" width="10" height="18" rx="2.5"/></svg>',
+  v_angle: '<svg viewBox="0 0 24 24"><path d="M6 5.5 14 3v18l-8-2.5z"/><path d="M14 3l4 1.6v14.8L14 21"/></svg>',
+  v_side: '<svg viewBox="0 0 24 24"><rect x="10" y="3" width="4" height="18" rx="1.5"/></svg>',
+  v_below: '<svg viewBox="0 0 24 24"><path d="M8 3h8l1.5 13h-11z"/><path d="M6.5 16 12 20.5l5.5-4.5"/></svg>',
+});
+// a small line drawing of a design: the glass outline and every part inside
+const DESIGN_ICON = {};
+function designIcon(id) {
+  if (DESIGN_ICON[id]) return DESIGN_ICON[id];
+  const D = getDesign(id), f = v => Math.round(v), pt = p => f(p[0]) + ' ' + f(p[1]);
+  const xs = D.shape.outline.map(p => p[0]), ys = D.shape.outline.map(p => p[1]);
+  const x0 = Math.min(...xs) - 10, y0 = Math.min(...ys) - 10, w = Math.max(...xs) - x0 + 10, h = Math.max(...ys) - y0 + 10;
+  const poly = q => 'M' + q.map(pt).join('L') + 'Z';
+  let lines = D.rampsRaw.flat().map(s => 'M' + pt(s[0]) + 'L' + pt(s[1])).join('');
+  if (D.centerWall) lines += 'M' + pt(D.centerWall[0]) + 'L' + pt(D.centerWall[1]);
+  let dots = D.pegsRaw.flat().map(p => `<circle class="dg-p" cx="${f(p[0])}" cy="${f(p[1])}" r="7"/>`).join('');
+  for (const r of D.rotors.flat()) {
+    const a = r.phi0 || 0, c = Math.cos(a), sn = Math.sin(a), tr = p => [r.cx + p[0] * c - p[1] * sn, r.cy + p[0] * sn + p[1] * c];
+    lines += r.segs.map(([p, q]) => 'M' + pt(tr(p)) + 'L' + pt(tr(q))).join('');
+    dots += `<circle class="dg-p" cx="${f(r.cx)}" cy="${f(r.cy)}" r="${Math.max(7, r.hub)}"/>`;
+  }
+  return (DESIGN_ICON[id] = `<svg viewBox="${f(x0)} ${f(y0)} ${f(w)} ${f(h)}"><path class="dg-o" d="${poly(D.shape.outline)}"/>`
+    + `<path class="dg-q" d="${D.quadsRaw.map(poly).join('')}"/><path class="dg-l" d="${lines}"/>${dots}</svg>`);
+}
+const DURATIONS = [1, 3, 5, 10, 15, 30, 60];
+const DESK_DURATIONS = [1, 2, 3, 4, 5];
+const VIEWS = [
+  { id: 'front', name: '正面', title: '正面から', yaw: 0, pitch: 0 },
+  { id: 'angle', name: '斜め', title: '斜め45°から（ガラスの厚みが見える）', yaw: -0.62, pitch: 0.1 },
+  { id: 'side', name: '横', title: '真横から', yaw: -1.5, pitch: 0.04 },
+  { id: 'below', name: 'あおり', title: '少し下から見上げる', yaw: 0.35, pitch: -0.42 },
+];
+const fmt = s => {
+  s = Math.max(0, Math.ceil(s));
+  const h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60, ss = s % 60;
+  return (h ? h + ':' + String(m).padStart(2, '0') : String(m).padStart(2, '0')) + ':' + String(ss).padStart(2, '0');
+};
+const durLabel = sec => sec % 60 === 0 ? `${sec / 60}分` : `${(sec / 60).toFixed(1)}分`;
+
+class TimerUI {
+  constructor(view) {
+    this.view = view; const model = view.model, app = view.stage.app, doc = view.stage.doc;
+    const el = this.el = doc.createElement('div');
+    el.className = 'ot-ui';
+    const swatch = p => `linear-gradient(135deg, ${PALETTES[p].c[0].sw} 0 50%, ${PALETTES[p].c[1].sw} 50% 100%)`;
+    this.swatch = swatch;
+    // the desktop window and the browser's small window get a compact bar; the page gets an icon rail
+    const panel = view.pinned ? `
+        <div class="ot-panel compact">
+          <div class="ot-row durations">${DESK_DURATIONS.map(m => `<button class="chip" data-m="${m}" title="${m}分">${m}</button>`).join('')}</div>
+          <div class="ot-row actions">
+            <button class="chip icon" data-a="sound" title="終了時のチャイム">${ICONS.sound}</button>
+            <button class="chip icon" data-a="smaller" title="小さく">${ICONS.zoomOut}</button>
+            <button class="chip icon" data-a="bigger" title="大きく">${ICONS.zoomIn}</button>
+            <button class="chip icon" data-a="quit" title="片付ける">${ICONS.close}</button>
+          </div>
+        </div>` : `
+        <div class="ot-panel full">
+          <div class="rail">
+            <button class="rb" data-pop="design" title="デザイン"><span class="cur-design"></span></button>
+            <button class="rb" data-pop="color" title="カラー"><span class="cur-color"></span></button>
+            <button class="rb" data-pop="view" title="見え方・奥行き">${ICONS.cube}</button>
+            <button class="rb" data-pop="time" title="時間">${ICONS.timer}<b class="cur-min"></b></button>
+            <i class="rsep"></i>
+            <button class="rb" data-a="sound" title="終了時のチャイム">${ICONS.sound}</button>
+            <button class="rb" data-a="smaller" title="小さく">${ICONS.zoomOut}</button>
+            <button class="rb" data-a="bigger" title="大きく">${ICONS.zoomIn}</button>
+            <button class="rb" data-a="pip" title="小窓で浮かべる（常に手前）">${ICONS.pip}</button>
+          </div>
+          <div class="pop" data-pop="design">${DESIGN_ORDER.map(d => `<button class="dz" data-d="${d}" title="${DESIGN_DEFS[d].name}：${DESIGN_DEFS[d].desc}"></button>`).join('')}</div>
+          <div class="pop" data-pop="color">${PALETTE_ORDER.map(p => `<button class="swatch" data-p="${p}" title="${PALETTES[p].name}"><span style="background:${swatch(p)}"></span></button>`).join('')}
+            <i class="psep"></i><button class="pi" data-a="glitter" title="ラメ">${ICONS.glitter}</button></div>
+          <div class="pop col" data-pop="view">
+            <div class="prow">${VIEWS.map(v => `<button class="pi" data-v="${v.id}" title="${v.name}：${v.title}">${ICONS['v_' + v.id]}</button>`).join('')}</div>
+            <div class="prow" title="左右の角度（タイマーを左右にドラッグでも）">${ICONS.turnL}<input class="yaw" type="range" min="-90" max="90" step="1" value="0">${ICONS.turnR}</div>
+          </div>
+          <div class="pop" data-pop="time">${DURATIONS.map(m => `<button class="pi" data-m="${m}" title="${m}分">${m}</button>`).join('')}
+            <button class="pi" data-m="custom" title="自由に設定（分）">${ICONS.edit}</button>
+            <span class="ot-custom"><input type="number" min="0.5" max="600" step="0.5" value="3" title="分"></span></div>
+        </div>`;
+    el.innerHTML = `
+      <div class="ot-grip" title="ドラッグで移動"></div>
+      <div class="ot-hud">
+        <div class="ot-time">--:--</div>
+        <div class="ot-sub"></div>
+        <button class="ot-flip" title="ひっくり返す（ダブルクリック / Space）">${ICONS.flip}</button>
+        ${panel}
+      </div>`;
+    view.stage.overlay.appendChild(el);
+    this.panel = el.querySelector('.ot-panel');
+    const side = doc.getElementById('side');
+    if (side && !view.pinned && !DESKTOP) { side.replaceChildren(this.panel); }
+    this.grip = el.querySelector('.ot-grip'); this.hud = el.querySelector('.ot-hud');
+    this.tEl = el.querySelector('.ot-time'); this.subEl = el.querySelector('.ot-sub');
+    const box = this.panel.querySelector('.ot-custom') || doc.createElement('span'), input = box.querySelector('input') || doc.createElement('input');
+    const pipBtn = this.panel.querySelector('[data-a="pip"]');
+    if (pipBtn && !view.stage.win.documentPictureInPicture) pipBtn.style.display = 'none';
+    const P = this.panel;
+    el.querySelector('.ot-flip').addEventListener('click', () => { model.flip(); app.userActed(); app.audio?.(); });
+    P.querySelectorAll('[data-d]').forEach(b => b.addEventListener('click', () => { model.setDesign(b.dataset.d); app.syncUi(model); }));
+    // rail buttons open one palette at a time
+    const closePops = () => { P.querySelectorAll('.pop.open').forEach(x => x.classList.remove('open')); P.querySelectorAll('.rb.on-pop').forEach(x => x.classList.remove('on-pop')); };
+    P.querySelectorAll('.rb[data-pop]').forEach(b => b.addEventListener('click', e => {
+      e.stopPropagation();
+      const pop = P.querySelector(`.pop[data-pop="${b.dataset.pop}"]`), open = !pop.classList.contains('open');
+      closePops();
+      if (!open) return;
+      if (b.dataset.pop === 'design') pop.querySelectorAll('[data-d]').forEach(d => { if (!d.innerHTML) d.innerHTML = designIcon(d.dataset.d); });
+      pop.classList.add('open'); b.classList.add('on-pop');
+    }));
+    doc.addEventListener('pointerdown', e => { if (!P.contains(e.target)) closePops(); });
+    doc.addEventListener('keydown', e => { if (e.key === 'Escape') closePops(); });
+    const yawIn = P.querySelector('input.yaw') || doc.createElement('input');
+    yawIn.addEventListener('input', () => {
+      const vw = model.cfg.view || (model.cfg.view = { yaw: 0, pitch: 0 });
+      vw.yaw = -yawIn.value * Math.PI / 180; this.sync(true);
+    });
+    yawIn.addEventListener('change', () => app.save());
+    yawIn.addEventListener('pointerdown', e => e.stopPropagation());
+    P.querySelectorAll('[data-v]').forEach(b => b.addEventListener('click', () => {
+      const v = VIEWS.find(x => x.id === b.dataset.v); model.cfg.view = { yaw: v.yaw, pitch: v.pitch }; app.syncUi(model); app.save();
+    }));
+    P.querySelectorAll('[data-p]').forEach(b => b.addEventListener('click', () => {
+      model.cfg.palette = b.dataset.p; model.views.forEach(v => v.applyPalette()); app.syncUi(model); app.save();
+    }));
+    P.querySelectorAll('[data-m]').forEach(b => b.addEventListener('click', () => {
+      if (b.dataset.m === 'custom') {
+        box.classList.toggle('show');
+        if (box.classList.contains('show')) { input.value = +(model.cfg.duration / 60).toFixed(1); input.focus(); input.select(); }
+        return;
+      }
+      box.classList.remove('show');
+      model.setDuration(+b.dataset.m * 60); app.syncUi(model);
+    }));
+    const apply = () => { const v = parseFloat(input.value); if (v > 0) { model.setDuration(Math.round(Math.min(600, Math.max(0.25, v)) * 60)); app.syncUi(model); } };
+    input.addEventListener('change', apply);
+    input.addEventListener('keydown', e => { e.stopPropagation(); if (e.key === 'Enter') { apply(); box.classList.remove('show'); } });
+    input.addEventListener('focus', () => el.classList.add('panel-pin'));
+    input.addEventListener('blur', () => el.classList.remove('panel-pin'));
+    P.querySelectorAll('[data-a]').forEach(b => b.addEventListener('click', () => {
+      const a = b.dataset.a;
+      if (a === 'flip') { model.flip(); app.userActed(); }
+      else if (a === 'sound') { model.cfg.sound = !model.cfg.sound; app.syncUi(model); app.save(); }
+      else if (a === 'glitter') { model.cfg.glitter = !model.cfg.glitter; model.views.forEach(v => v.applyPalette()); app.syncUi(model); app.save(); }
+      else if (a === 'smaller') DESKTOP ? native({ type: 'size', k: 1 / 1.12 }) : app.rescale(model, 1 / 1.12);
+      else if (a === 'bigger') DESKTOP ? native({ type: 'size', k: 1.12 }) : app.rescale(model, 1.12);
+      else if (a === 'quit') { app.save(); native({ type: 'close' }); }
+      else if (a === 'pip') app.togglePiP(model);
+      else if (a === 'close') app.remove(model);
+    }));
+    const grip = this.grip;
+    grip.addEventListener('pointerdown', e => {
+      e.preventDefault(); grip.setPointerCapture(e.pointerId);
+      this.move = { x: e.clientX, y: e.clientY, ox: model.cfg.x, oy: model.cfg.y };
+      el.classList.add('moving');
+    });
+    grip.addEventListener('pointermove', e => {
+      if (!this.move) return;
+      if (DESKTOP) {          // move the desktop window itself
+        native({ type: 'move', dx: e.screenX - (this.move.sx ?? e.screenX), dy: e.screenY - (this.move.sy ?? e.screenY) });
+        this.move.sx = e.screenX; this.move.sy = e.screenY;
+        return;
+      }
+      const k = view.stage.worldPerPixel();
+      model.cfg.x = this.move.ox + (e.clientX - this.move.x) * k;
+      model.cfg.y = this.move.oy - (e.clientY - this.move.y) * k;
+      app.clampPos(model);
+    });
+    const end = () => { if (this.move) { this.move = null; el.classList.remove('moving'); app.save(); } };
+    grip.addEventListener('pointerup', end); grip.addEventListener('pointercancel', end);
+    this.sync();
+  }
+  sync(fromSlider = false) {
+    const model = this.view.model, cfg = model.cfg, m = cfg.duration / 60, P = this.panel;
+    let matched = false;
+    P.querySelectorAll('[data-m]').forEach(b => {
+      const on = b.dataset.m !== 'custom' && +b.dataset.m === m;
+      matched = matched || on; b.classList.toggle('on', on);
+    });
+    P.querySelector('[data-m="custom"]')?.classList.toggle('on', !matched);
+    P.querySelector('[data-a="sound"]')?.classList.toggle('off', !cfg.sound);
+    P.querySelector('[data-a="glitter"]')?.classList.toggle('on', !!cfg.glitter);
+    P.querySelectorAll('[data-d]').forEach(b => b.classList.toggle('on', b.dataset.d === cfg.design));
+    P.querySelectorAll('[data-p]').forEach(b => b.classList.toggle('on', b.dataset.p === cfg.palette));
+    const vw = cfg.view || { yaw: 0, pitch: 0 };
+    P.querySelectorAll('[data-v]').forEach(b => { const v = VIEWS.find(x => x.id === b.dataset.v); b.classList.toggle('on', Math.abs(v.yaw - vw.yaw) < 0.02 && Math.abs(v.pitch - vw.pitch) < 0.02); });
+    const yi = P.querySelector('input.yaw'); if (yi && document.activeElement !== yi) yi.value = Math.round(-vw.yaw * 180 / Math.PI);
+    // the rail shows what is chosen
+    const cd = P.querySelector('.cur-design'); if (cd && cd.dataset.d !== cfg.design) { cd.innerHTML = designIcon(cfg.design); cd.dataset.d = cfg.design; }
+    const cc = P.querySelector('.cur-color'); if (cc) cc.style.background = this.swatch(cfg.palette);
+    const cm = P.querySelector('.cur-min'); if (cm) cm.textContent = +m.toFixed(1);
+  }
+  update() {
+    const v = this.view, model = v.model, st = v.stage;
+    const [x, y] = v.pos(), s = v.scale();
+    const top = st.project(x, y + (H * U / 2 + 0.4) * s), bottom = st.project(x, y - (H * U / 2 + 0.22) * s);
+    this.grip.style.left = top[0] + 'px'; this.grip.style.top = top[1] + 'px';
+    this.hud.style.left = bottom[0] + 'px'; this.hud.style.top = bottom[1] + 'px';
+    const shown = model.done ? '00:00' : (model.wasRunning || model.anyTop) ? fmt(model.remaining) : '--:--';
+    if (shown !== this._shown) { this.tEl.textContent = shown; this._shown = shown; }
+    const sub = model.done ? `おしまい · ${durLabel(model.cfg.duration)}が経ちました` : model.wasRunning ? `${durLabel(model.cfg.duration)} タイマー` : model.settled() ? 'ひっくり返してスタート' : '';
+    if (sub !== this._sub) { this.subEl.textContent = sub; this._sub = sub; }
+    this.el.classList.toggle('done', model.done);
+    this.el.classList.toggle('ready', model.done || (!model.wasRunning && model.settled()));
+  }
+}
+
+/* =====================================================================
+   7. Stage: one renderer + studio scene (page or floating window)
+   ===================================================================== */
+class Stage {
+  constructor(app, win, { pip = false, transparent = false } = {}) {
+    this.app = app; this.win = win; this.doc = win.document; this.pip = pip; this.transparent = transparent;
+    this.padBottom = transparent ? 112 : pip ? 0 : 92;      // px kept free below the timer (desktop controls)
+    const canvas = this.canvas = this.doc.createElement('canvas');
+    canvas.className = 'stage';
+    this.doc.body.prepend(canvas);
+    this.overlay = this.doc.createElement('div'); this.overlay.className = 'overlay';
+    canvas.after(this.overlay);
+    const r = this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, alpha: transparent, premultipliedAlpha: true, powerPreference: 'high-performance' });
+    this.pr = Math.min(win.devicePixelRatio || 1, 2);
+    r.setPixelRatio(this.pr);
+    r.toneMapping = THREE.NeutralToneMapping;
+    r.toneMappingExposure = 0.95;
+    const scene = this.scene = new THREE.Scene();
+    scene.environment = studioEnvironment(r);
+    loadHdri().then(tex => {
+      const pm = new THREE.PMREMGenerator(r);
+      scene.environment = pm.fromEquirectangular(tex).texture;
+      scene.environmentRotation.set(0, THREE.MathUtils.degToRad(-35), 0);
+      pm.dispose();
+    }).catch(() => {});
+    this.hemi = new THREE.HemisphereLight(0xffffff, 0xd8dce2, 1.0); scene.add(this.hemi);
+    this.camera = new THREE.PerspectiveCamera(22, 1, 0.1, 100);
+    this.wall = new THREE.Mesh(new THREE.PlaneGeometry(90, 70), new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, metalness: 0 }));
+    this.wall.position.z = WALL_Z; this.wall.renderOrder = -1;
+    scene.add(this.wall);
+    this.spot = new THREE.SpotLight(0xffffff, 30, 0, 0.55, 1, 2);
+    this.spot.position.set(-2.2, 3.4, 9); this.spot.target.position.set(0.4, -0.4, WALL_Z);
+    scene.add(this.spot, this.spot.target);
+    const key = new THREE.DirectionalLight(0xffffff, 1.4); key.position.set(-3, 5, 6); scene.add(key);
+    const rim = new THREE.DirectionalLight(0xffffff, 0.7); rim.position.set(4, 1.5, 5); scene.add(rim);
+
+    // what lies behind each layer, for refraction
+    const rtOpts = { type: THREE.HalfFloatType, depthBuffer: true };
+    this.bufA = new THREE.WebGLRenderTarget(4, 4, rtOpts);
+    this.bufB = new THREE.WebGLRenderTarget(4, 4, rtOpts);
+    this.bufC = new THREE.WebGLRenderTarget(4, 4, rtOpts);
+    this.uBufA = { value: this.bufA.texture }; this.uBufB = { value: this.bufB.texture }; this.uBufC = { value: this.bufC.texture };
+    this.uRes = { value: new THREE.Vector2(4, 4) };
+    // final image: MSAA, gentle bloom on highlights, film grain and vignette, then tone mapping
+    this.composer = new EffectComposer(r, new THREE.WebGLRenderTarget(4, 4, { type: THREE.HalfFloatType, samples: 4 }));
+    this.composer.addPass(new RenderPass(scene, this.camera));
+    this.bloom = new UnrealBloomPass(new THREE.Vector2(4, 4), 0.06, 0.4, 0.95);
+    this.composer.addPass(this.bloom);
+    this.grain = new ShaderPass(GRAIN_SHADER);
+    this.composer.addPass(this.grain);
+    this.composer.addPass(new OutputPass());
+
+    this.views = [];
+    this.cam = { x: 0, y: 0 }; this.ptr = null; this.t0 = win.performance.now();
+    this.ray = new THREE.Raycaster(); this.plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
+    this.applyTheme();
+    this.resize();
+    win.addEventListener('resize', () => this.resize());
+    this.bindPointer();
+  }
+  applyTheme() {
+    const th = THEMES[this.app.theme];
+    this.wall.material.color.setHex(th.wall);
+    this.renderer.setClearColor(th.clear, this.transparent ? 0 : 1);
+    this.wall.visible = !this.transparent;
+    this.bloom.enabled = this.grain.enabled = !this.transparent;
+    this.scene.environmentIntensity = th.env;
+    this.spot.intensity = th.spot; this.hemi.intensity = th.hemi;
+    this.bloom.strength = th.bloom;
+    this.views.forEach(v => v.applyTheme());
+  }
+  setQuality(pr) { this.pr = pr; this.renderer.setPixelRatio(pr); this.resize(); }
+  resize() {
+    const w = this.win.innerWidth, h = this.win.innerHeight, pr = this.pr;
+    this.renderer.setSize(w, h, false);
+    this.composer.setPixelRatio(pr);
+    this.composer.setSize(w, h);
+    const bw = Math.round(w * pr), bh = Math.round(h * pr);
+    this.bufA.setSize(bw, bh); this.bufB.setSize(bw, bh); this.bufC.setSize(bw, bh);
+    this.uRes.value.set(bw, bh);
+    this.camera.aspect = w / h;
+    this.viewH = this.pip ? Math.max(5.3, 2.9 / this.camera.aspect) : Math.max(7.2, 3.4 / this.camera.aspect);
+    this.dist = this.viewH / 2 / Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2));
+    this.camera.updateProjectionMatrix();
+    if (!this.pip) this.app.models?.forEach(m => this.app.clampPos(m));
+  }
+  worldPerPixel() { return this.viewH / this.win.innerHeight; }
+  project(x, y) {
+    const v = new THREE.Vector3(x, y, 0).project(this.camera);
+    return [(v.x + 1) / 2 * this.win.innerWidth, (1 - v.y) / 2 * this.win.innerHeight];
+  }
+  toWorld(e) {
+    const ndc = new THREE.Vector2(e.clientX / this.win.innerWidth * 2 - 1, -(e.clientY / this.win.innerHeight) * 2 + 1);
+    this.ray.setFromCamera(ndc, this.camera);
+    const p = new THREE.Vector3();
+    return this.ray.ray.intersectPlane(this.plane, p) ? p : null;
+  }
+  viewAt(e) {
+    const ndc = new THREE.Vector2(e.clientX / this.win.innerWidth * 2 - 1, -(e.clientY / this.win.innerHeight) * 2 + 1);
+    this.ray.setFromCamera(ndc, this.camera);
+    const p = new THREE.Vector3(), n = new THREE.Vector3(), o = new THREE.Vector3(), pl = new THREE.Plane();
+    for (let i = this.views.length - 1; i >= 0; i--) {
+      const v = this.views[i]; if (!v.root.visible) continue;
+      v.group.updateMatrixWorld();
+      n.set(0, 0, 1).transformDirection(v.group.matrixWorld); o.setFromMatrixPosition(v.group.matrixWorld);
+      pl.setFromNormalAndCoplanarPoint(n, o);
+      if (Math.abs(n.dot(this.ray.ray.direction)) > 0.15 && this.ray.ray.intersectPlane(pl, p) && v.contains(p)) return v;
+      // seen edge-on: accept clicks near its silhouette on screen
+      const [cx, cy] = this.project(...v.pos()), hpx = H * U / 2 * v.scale() / this.worldPerPixel();
+      if (Math.abs(n.z) < 0.4 && Math.abs(e.clientX - cx) < 60 && Math.abs(e.clientY - cy) < hpx) return v;
+    }
+    return null;
+  }
+  bindPointer() {
+    const c = this.canvas, win = this.win;
+    c.addEventListener('contextmenu', e => { if (this.viewAt(e) || this.orbit) e.preventDefault(); });
+    c.addEventListener('pointermove', e => {
+      this.ptr = { x: e.clientX, y: e.clientY };
+      if (this.orbit) {
+        const o = this.orbit, vw = o.v.model.cfg.view;
+        vw.yaw = Math.max(-1.57, Math.min(1.57, o.yaw + (e.clientX - o.x) * 0.008));
+        if (!o.yawOnly) vw.pitch = Math.max(-0.7, Math.min(0.7, o.pitch + (e.clientY - o.y) * 0.006));
+        o.v.ui.sync();
+        return;
+      }
+      if (this.pending) {
+        const pd = this.pending, dx = e.clientX - pd.x, dy = e.clientY - pd.y;
+        if (Math.hypot(dx, dy) < 6) return;
+        this.pending = null;
+        if (Math.abs(dx) > Math.abs(dy) * 1.3) {
+          const vw = pd.v.model.cfg.view || (pd.v.model.cfg.view = { yaw: 0, pitch: 0 });
+          this.orbit = { v: pd.v, x: pd.x, y: pd.y, yaw: vw.yaw, pitch: vw.pitch, yawOnly: true };
+        } else {
+          pd.v.model.dragStart(pd.x, pd.y, pd.t);
+          this.drag = pd.v;
+        }
+      }
+      if (this.drag) {
+        const v = this.drag, [cx, cy] = this.project(...v.pos());
+        v.model.dragMove(e.clientX, e.clientY, cx, cy, win.performance.now());
+        return;
+      }
+      const v = this.viewAt(e);
+      c.style.cursor = v ? 'grab' : '';
+      this.views.forEach(x => x.ui.el.classList.toggle('hover', x === v));
+    });
+    c.addEventListener('pointerleave', () => { this.ptr = null; });
+    c.addEventListener('pointerdown', e => {
+      if (e.button === 2 || (e.button === 0 && e.shiftKey)) {
+        const v = this.viewAt(e); if (!v) return;
+        e.preventDefault(); c.setPointerCapture(e.pointerId);
+        const vw = v.model.cfg.view || (v.model.cfg.view = { yaw: 0, pitch: 0 });
+        this.orbit = { v, x: e.clientX, y: e.clientY, yaw: vw.yaw, pitch: vw.pitch }; c.style.cursor = 'move';
+        v.ui.sync();
+        return;
+      }
+      if (e.button !== 0) return;
+      const v = this.viewAt(e); if (!v) return;
+      e.preventDefault(); c.setPointerCapture(e.pointerId);
+      // the direction of the first movement decides: vertical = flip the timer, horizontal = look at its depth
+      this.pending = { v, x: e.clientX, y: e.clientY, t: win.performance.now() };
+      c.style.cursor = 'grabbing';
+      this.app.front = v.model; this.app.userActed(); this.app.audio();
+      this.views.splice(this.views.indexOf(v), 1); this.views.push(v);
+    });
+    const up = () => {
+      if (this.pending) { this.pending = null; c.style.cursor = 'grab'; }
+      if (this.orbit) { const v = this.orbit.v; this.orbit = null; c.style.cursor = ''; v.ui.sync(); this.app.save(); }
+      if (this.drag) { this.drag.model.dragEnd(win.performance.now()); this.drag = null; c.style.cursor = 'grab'; }
+    };
+    c.addEventListener('pointerup', up); c.addEventListener('pointercancel', up);
+    c.addEventListener('dblclick', e => { const v = this.viewAt(e); if (v) { v.model.flip(); this.app.userActed(); } });
+    c.addEventListener('wheel', e => {
+      if (!e.ctrlKey && !e.metaKey) return;
+      const v = this.viewAt(e); if (!v || this.pip) return;
+      e.preventDefault(); this.app.rescale(v.model, e.deltaY < 0 ? 1.05 : 1 / 1.05);
+    }, { passive: false });
+  }
+  addView(model, pinned) { const v = new TimerView(this, model, pinned); this.views.push(v); model.views.add(v); return v; }
+  removeView(v) { v.dispose(); this.views = this.views.filter(x => x !== v); v.model.views.delete(v); }
+  render() {
+    const t = (this.win.performance.now() - this.t0) / 1000;
+    // fixed camera: the scene does not move with the pointer
+    const cam = this.camera, r = this.renderer;
+    const oy = this.padBottom * this.viewH / this.win.innerHeight / 2;
+    cam.position.set(0, -oy, this.dist);
+    cam.lookAt(0, -oy, 0);
+    cam.updateMatrixWorld();
+    TIME.value = t;
+    this.grain.uniforms.uTime.value = t % 100;
+    for (const v of this.views) if (v.root.visible) v.update(r, t, this.ptr);
+    // layered passes: back -> + blue -> + front -> + glass case (final, through the composer)
+    cam.layers.set(L_BACK);
+    r.setRenderTarget(this.bufA); r.clear(); r.render(this.scene, cam);
+    cam.layers.enable(L_BLUE);
+    r.setRenderTarget(this.bufB); r.clear(); r.render(this.scene, cam);
+    cam.layers.enable(L_FRONT);
+    r.setRenderTarget(this.bufC); r.clear(); r.render(this.scene, cam);
+    cam.layers.enable(L_GLASS);
+    r.setRenderTarget(null);
+    this.composer.render();
+  }
+  dispose() {
+    this.views.slice().forEach(v => this.removeView(v));
+    this.bufA.dispose(); this.bufB.dispose(); this.bufC.dispose(); this.composer.dispose(); this.renderer.dispose();
+  }
+}
+/* =====================================================================
+   8. App: timers, persistence, theme, chime, floating window
+   ===================================================================== */
+const STORE = DESKTOP ? 'oil-timer-desk' : 'oil-timer-v4';
+const App = {
+  models: [], theme: 'light', pip: null,
+  init() {
+    let saved = null;
+    try { saved = JSON.parse(localStorage.getItem(STORE) || 'null'); } catch (e) {}
+    this.theme = saved?.theme || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+    document.documentElement.dataset.theme = this.theme;
+    if (DESKTOP) {
+      // just the timer on a transparent window; settings may come from the page that opened it
+      const q = new URLSearchParams(location.search), cfg = Object.assign({}, saved?.timers?.[0]?.cfg);
+      if (q.get('design') && DESIGN_DEFS[q.get('design')]) cfg.design = q.get('design');
+      if (q.get('palette') && PALETTES[q.get('palette')]) cfg.palette = q.get('palette');
+      if (+q.get('duration') > 0) cfg.duration = +q.get('duration');
+      this.stage = new Stage(this, window, { pip: true, transparent: true });
+      const same = saved?.timers?.[0] && saved.timers[0].cfg.design === cfg.design;
+      const m = new TimerModel(this, { cfg, state: same ? saved.timers[0].state : null, fresh: !same });
+      this.models.push(m); this.stage.addView(m, true); this.front = m; this.acted = true;
+    } else {
+    this.stage = new Stage(this, window);
+    if (saved?.timers?.length) {
+      this.add({ cfg: saved.timers[0].cfg, state: saved.timers[0].state });
+      document.getElementById('hint').classList.add('hidden'); this.acted = true;
+    } else this.add({ fresh: true });
+    }
+    // place on the desktop: the Mac app (no background) or the browser's floating window
+    const side = document.getElementById('side');
+    document.getElementById('setBtn').onclick = e => { e.stopPropagation(); side.classList.toggle('show'); };
+    addEventListener('click', e => { if (!side.contains(e.target) && !e.target.closest('#setBtn')) side.classList.remove('show'); });
+    const menu = document.getElementById('deskMenu');
+    document.getElementById('deskBtn').onclick = e => { e.stopPropagation(); menu.classList.toggle('show'); };
+    addEventListener('click', e => { if (!menu.contains(e.target)) menu.classList.remove('show'); });
+    document.getElementById('deskApp').onclick = () => {
+      const m = this.front || this.models[0], c = m.cfg;
+      this.save();
+      location.href = `oiltimer://open?design=${c.design}&palette=${c.palette}&duration=${c.duration}`;
+      menu.classList.remove('show');
+      this.tip('Macアプリが開かない場合は、フォルダ内の OilTimer.app を一度ダブルクリックしてください');
+    };
+    // the Mac app only exists on this computer; elsewhere offer just the browser's small window
+    const local = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname) || location.protocol === 'file:';
+    if (!local) document.getElementById('deskApp').style.display = 'none';
+    if (!local && !window.documentPictureInPicture) document.getElementById('deskBtn').style.display = 'none';
+    document.getElementById('deskPip').onclick = () => { menu.classList.remove('show'); this.togglePiP(this.front || this.models[0]); };
+    document.getElementById('themeBtn').onclick = () => this.setTheme(this.theme === 'dark' ? 'light' : 'dark');
+    document.getElementById('fsBtn').onclick = () => { if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen?.(); };
+    addEventListener('keydown', e => this.onKey(e));
+    addEventListener('pagehide', () => this.save());
+    setInterval(() => this.save(), 4000);
+    setInterval(() => this.updateTitle(), 500);
+    document.addEventListener('visibilitychange', () => this.onVisibility());
+    this.last = performance.now();
+    this.frame = this.frame.bind(this);
+    this.schedule();
+    setTimeout(() => document.getElementById('loading').classList.add('gone'), 300);
+  },
+  onKey(e) {
+    if (e.code === 'Space' && !e.repeat && e.target?.tagName !== 'INPUT') {
+      e.preventDefault(); (this.front || this.models[0])?.flip(); this.userActed();
+    }
+  },
+  schedule() {
+    const w = this.pip && !this.pip.win.closed ? this.pip.win : window;
+    w.requestAnimationFrame(this.frame);
+  },
+  frame() {
+    const now = performance.now();
+    const dt = (now - this.last) / 1000; this.last = now;
+    // keep it smooth: lower the render resolution step by step if frames are slow
+    if (dt < 0.25 && !document.hidden) {
+      this.ft = (this.ft ?? 1 / 60) * 0.97 + dt * 0.03;
+      this.ftN = (this.ftN || 0) + 1;
+      if (this.ftN > 120 && this.ft > 1 / 38 && this.stage.pr > 1) { this.stage.setQuality(Math.max(1, this.stage.pr - 0.25)); this.ftN = 0; }
+    }
+    for (const m of this.models) m.update(dt);
+    this.stage.render();
+    if (this.pip) this.pip.stage.render();
+    this.schedule();
+  },
+  add({ cfg, state, fresh }) {
+    const m = new TimerModel(this, { cfg, state, fresh });
+    this.models.push(m);
+    this.stage.addView(m, false);
+    this.front = m;
+    return m;
+  },
+  syncUi(m) { m.views.forEach(v => v.ui.sync()); },
+  remove(m) {
+    if (this.models.length <= 1) { this.tip('最後のタイマーは削除できません'); return; }
+    [...m.views].forEach(v => v.stage.removeView(v));
+    this.models = this.models.filter(x => x !== m); this.save();
+  },
+  rescale(m, k) { m.cfg.scale = Math.max(0.5, Math.min(1.6, m.cfg.scale * k)); this.clampPos(m); this.save(); },
+  clampPos(m) {
+    const st = this.stage; if (!st?.viewH) return;
+    const hw = st.viewH * st.camera.aspect / 2, hh = st.viewH / 2;
+    m.cfg.x = Math.max(-hw + 0.6, Math.min(hw - 0.6, m.cfg.x));
+    m.cfg.y = Math.max(-hh + 0.8, Math.min(hh - 0.8, m.cfg.y));
+  },
+  userActed() {
+    if (this.acted) return;
+    this.acted = true;
+    setTimeout(() => document.getElementById('hint').classList.add('hidden'), 2500);
+  },
+  setTheme(th) {
+    this.theme = th;
+    document.documentElement.dataset.theme = th;
+    this.stage.applyTheme();
+    if (this.pip) { this.pip.win.document.documentElement.dataset.theme = th; this.pip.stage.applyTheme(); }
+    this.save();
+  },
+  save() {
+    try { localStorage.setItem(STORE, JSON.stringify({ theme: this.theme, timers: this.models.map(m => ({ cfg: m.cfg, state: m.serialize() })) })); } catch (e) {}
+  },
+  tip(msg) {
+    const el = document.getElementById('tip');
+    el.textContent = msg; el.classList.add('show');
+    clearTimeout(this._tip); this._tip = setTimeout(() => el.classList.remove('show'), 2400);
+  },
+  updateTitle() {
+    const live = this.models.find(m => m.wasRunning);
+    document.title = live ? `${fmt(live.remaining)} · Oil Timer` : 'Oil Timer';
+  },
+  onVisibility() {
+    clearTimeout(this._bgChime);
+    if (!document.hidden || this.pip) return;
+    let soonest = Infinity, who = null;
+    for (const m of this.models) {
+      if (!m.wasRunning || !m.cfg.sound) continue;
+      const r = m.remainingFromState();
+      if (r < soonest) { soonest = r; who = m; }
+    }
+    if (who && soonest < 36000) this._bgChime = setTimeout(() => { if (document.hidden) { who.chimedEarly = true; this.chime(); } }, soonest * 1000 + 600);
+  },
+  audio() {
+    if (!this.ac) { const AC = window.AudioContext || window.webkitAudioContext; if (AC) this.ac = new AC(); }
+    if (this.ac?.state === 'suspended') this.ac.resume();
+    return this.ac;
+  },
+  chime() {
+    const ac = this.audio(); if (!ac) return;
+    const t0 = ac.currentTime + 0.05;
+    const master = ac.createGain(); master.gain.value = 0.22; master.connect(ac.destination);
+    const bell = (f, t, vol) => {
+      [[1, 1, 3.2], [2.76, 0.35, 1.6], [5.4, 0.12, 0.8], [0.5, 0.18, 2.4]].forEach(([mul, amp, dec]) => {
+        const o = ac.createOscillator(), g = ac.createGain();
+        o.type = 'sine'; o.frequency.value = f * mul;
+        g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(amp * vol, t + 0.012);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + dec);
+        o.connect(g).connect(master); o.start(t); o.stop(t + dec + 0.1);
+      });
+    };
+    bell(659.25, t0, 1); bell(880, t0 + 0.9, 0.8); bell(659.25, t0 + 2.2, 0.6);
+  },
+  async togglePiP(m) {
+    if (this.pip) { const same = this.pip.model === m; this.pip.win.close(); if (same) return; }
+    if (!window.documentPictureInPicture) { this.tip('このブラウザはフローティング表示に未対応です（Chrome / Edge を推奨）'); return; }
+    this.audio();
+    let win;
+    try { win = await documentPictureInPicture.requestWindow({ width: 230, height: 470 }); }
+    catch (e) { this.tip('フローティング表示を開けませんでした'); return; }
+    const d = win.document;
+    d.documentElement.lang = 'ja'; d.documentElement.dataset.theme = this.theme; d.title = 'Oil Timer';
+    const font = d.createElement('link'); font.rel = 'stylesheet'; font.href = document.getElementById('font-link').href; d.head.append(font);
+    const st = d.createElement('style'); st.textContent = document.getElementById('app-style').textContent; d.head.append(st);
+    d.body.className = 'pip';
+    const stage = new Stage(this, win, { pip: true });
+    stage.addView(m, true);
+    [...m.views].filter(v => v.stage === this.stage).forEach(v => v.setVisible(false));
+    win.addEventListener('keydown', e => this.onKey(e));
+    this.pip = { win, stage, model: m };
+    win.addEventListener('pagehide', () => {
+      stage.dispose();
+      [...m.views].filter(v => v.stage === this.stage).forEach(v => v.setVisible(true));
+      this.pip = null;
+    });
+  },
+};
+
+const ok = (() => { try { return !!document.createElement('canvas').getContext('webgl2'); } catch (e) { return false; } })();
+if (ok && DESKTOP) setTimeout(() => {
+  const m = App.models[0], gl = App.stage.renderer.getContext();
+  native({ type: 'log', msg: `ready design=${m?.cfg.design} remaining=${m?.remaining.toFixed(1)} webgl2=${gl instanceof WebGL2RenderingContext} size=${innerWidth}x${innerHeight} env=${!!App.stage.scene.environment}` });
+}, 6000);
+if (ok) { App.init(); window.App = App; window.DESIGN_DEFS = DESIGN_DEFS; window.getDesign = getDesign; window.inRegion = inRegion; }
+else document.getElementById('loading').textContent = 'このブラウザでは WebGL2 が使えません';
+</script>
+</body>
+</html>
