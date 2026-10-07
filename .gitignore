@@ -1,3 +1,7 @@
 .DS_Store
 .claude/
 OilTimer.app/
+electron/node_modules/
+electron/dist/
+electron/app/
+electron/package-lock.json

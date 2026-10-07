@@ -127,6 +127,16 @@ body.pip .ot-grip,body.pip .ot-sub,body.pip .ot-row.actions,body.pip .ot-row.loo
   backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
 }
 .desk-menu.show{display:flex}
+.get-app{position:fixed;right:22px;bottom:76px;z-index:13;display:none;flex-direction:column;gap:8px;padding:12px;width:250px;max-width:calc(100vw - 44px);box-sizing:border-box;
+  border-radius:16px;background:var(--panel);border:1px solid var(--panel-line);box-shadow:var(--panel-shadow);
+  backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);font-family:"Zen Kaku Gothic New",sans-serif;color:var(--ink)}
+.get-app.show{display:flex}
+.get-app p{margin:0;font-size:12px;line-height:1.6;color:var(--ink-soft)}
+.get-app .os{display:flex;gap:6px}
+.get-app a{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;height:38px;border-radius:11px;background:var(--chip-on);color:var(--chip-on-ink);
+  text-decoration:none;font:500 13px "Inter",sans-serif}
+.get-app a svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.get-app small{font-size:10.5px;line-height:1.6;color:var(--ink-soft)}
 /* settings: docked at the left on wide screens, a popup above the dock on narrow ones */
 .side{position:fixed;left:24px;top:50%;transform:translateY(-50%);z-index:9;opacity:.55;transition:opacity .35s ease}
 .side:hover,.side:focus-within,.side:has(.pop.open){opacity:1}
@@ -204,7 +214,8 @@ svg .dg-p{fill:currentColor;stroke:none}
 .pop .ot-custom.show{display:flex}
 .pop .ot-custom input{width:54px;height:36px;border-radius:11px}
 .ot-sub{display:none}
-.hint{display:flex;justify-content:center;gap:26px}
+.hint{display:flex;justify-content:center;gap:26px;top:auto;bottom:34px}
+@media (max-width:640px){.hint{justify-content:flex-start;gap:14px;padding-left:16px;top:14px;bottom:auto}.hint svg{width:17px;height:17px}}
 .hint span{display:flex;gap:4px;align-items:center}
 .hint svg{width:20px;height:20px;stroke:var(--ink-soft);fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
 /* the main control: turn the timer over */
@@ -247,8 +258,16 @@ body.desktop .ot-panel .chip{height:22px;min-width:22px;padding:0 4px;font-size:
 </div>
 <div class="tip" id="tip"></div>
 <div class="desk-menu" id="deskMenu">
-  <button id="deskApp" title="背景なしでデスクトップに置く（Macアプリ）"><svg viewBox="0 0 24 24"><rect x="2.5" y="4" width="19" height="13" rx="2" stroke-dasharray="2.2 2.2"/><path d="M8 21h8M12 17v4"/><rect x="10" y="6.5" width="4" height="8" rx="1.2"/></svg></button>
+  <button id="deskApp" title="背景なしでデスクトップに置く（アプリ）"><svg viewBox="0 0 24 24"><rect x="2.5" y="4" width="19" height="13" rx="2" stroke-dasharray="2.2 2.2"/><path d="M8 21h8M12 17v4"/><rect x="10" y="6.5" width="4" height="8" rx="1.2"/></svg></button>
   <button id="deskPip" title="ブラウザの小窓で置く（Chrome / Edge）"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2.5"/><rect x="12" y="11" width="7" height="6" rx="1.2"/></svg></button>
+</div>
+<div class="get-app" id="getApp">
+  <p>背景なしで置くには、無料のデスクトップアプリを使います。インストール後に一度起動すると、次からはこのボタンで開きます。</p>
+  <div class="os">
+    <a id="dlMac" href="https://github.com/akechany0122-lang/oil-timer/releases/download/desktop/OilTimer-mac.zip"><svg viewBox="0 0 24 24"><path d="M12 4v11M7.5 10.5 12 15l4.5-4.5M5 19h14"/></svg>Mac</a>
+    <a id="dlWin" href="https://github.com/akechany0122-lang/oil-timer/releases/download/desktop/OilTimer-Setup-win.exe"><svg viewBox="0 0 24 24"><path d="M12 4v11M7.5 10.5 12 15l4.5-4.5M5 19h14"/></svg>Windows</a>
+  </div>
+  <small>Mac：初回は「システム設定 → プライバシーとセキュリティ → このまま開く」を選びます。<br>Windows：警告が出たら「詳細情報 → 実行」を選びます。</small>
 </div>
 <div class="side" id="side"></div>
 <div class="dock">
@@ -2185,6 +2204,8 @@ class Stage {
   setQuality(pr) { this.pr = pr; this.renderer.setPixelRatio(pr); this.resize(); }
   resize() {
     const w = this.win.innerWidth, h = this.win.innerHeight, pr = this.pr;
+    // narrow page: the dock sits under the timer too, keep it clear
+    if (!this.pip && !this.transparent) this.padBottom = 100 + (w < 640 ? 72 : 0);
     this.renderer.setSize(w, h, false);
     this.composer.setPixelRatio(pr);
     this.composer.setSize(w, h);
@@ -2353,17 +2374,26 @@ const App = {
     const menu = document.getElementById('deskMenu');
     document.getElementById('deskBtn').onclick = e => { e.stopPropagation(); menu.classList.toggle('show'); };
     addEventListener('click', e => { if (!menu.contains(e.target)) menu.classList.remove('show'); });
+    // the desktop app (Mac / Windows) opens through the oiltimer:// link; if nothing
+    // answers (the page keeps focus), offer the download instead
+    const getApp = document.getElementById('getApp');
+    addEventListener('click', e => { if (!getApp.contains(e.target) && !e.target.closest('#deskApp')) getApp.classList.remove('show'); });
+    const isWin = /Windows/.test(navigator.userAgent);
+    document.getElementById(isWin ? 'dlMac' : 'dlWin').style.opacity = '.55';
     document.getElementById('deskApp').onclick = () => {
       const m = this.front || this.models[0], c = m.cfg;
       this.save();
-      location.href = `oiltimer://open?design=${c.design}&palette=${c.palette}&duration=${c.duration}`;
       menu.classList.remove('show');
-      this.tip('Macアプリが開かない場合は、フォルダ内の OilTimer.app を一度ダブルクリックしてください');
+      let left = false;
+      const away = () => { left = true; };
+      addEventListener('blur', away); document.addEventListener('visibilitychange', away);
+      location.href = `oiltimer://open?design=${c.design}&palette=${c.palette}&duration=${c.duration}`;
+      setTimeout(() => {
+        removeEventListener('blur', away); document.removeEventListener('visibilitychange', away);
+        if (!left) getApp.classList.add('show');
+      }, 1500);
     };
-    // the Mac app only exists on this computer; elsewhere offer just the browser's small window
-    const local = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname) || location.protocol === 'file:';
-    if (!local) document.getElementById('deskApp').style.display = 'none';
-    if (!local && !window.documentPictureInPicture) document.getElementById('deskBtn').style.display = 'none';
+    if (!window.documentPictureInPicture) document.getElementById('deskPip').style.display = 'none';
     document.getElementById('deskPip').onclick = () => { menu.classList.remove('show'); this.togglePiP(this.front || this.models[0]); };
     document.getElementById('themeBtn').onclick = () => this.setTheme(this.theme === 'dark' ? 'light' : 'dark');
     document.getElementById('fsBtn').onclick = () => { if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen?.(); };

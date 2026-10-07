@@ -1,0 +1,62 @@
+# Builds the desktop app (Mac / Windows) and attaches it to the "desktop" release,
+# which the web page links to.
+name: Desktop app
+
+on:
+  push:
+    branches: [main]
+    paths: ['electron/**', '.github/workflows/desktop.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Make sure the release exists
+        env: { GH_TOKEN: '${{ github.token }}', GH_REPO: '${{ github.repository }}' }
+        run: |
+          gh release view desktop >/dev/null 2>&1 || gh release create desktop \
+            --title "Oil Timer デスクトップ版" \
+            --notes "背景なしでデスクトップに置けるオイルタイマー。Mac は OilTimer-mac.zip、Windows は OilTimer-Setup-win.exe をダウンロードしてください。"
+
+  build:
+    needs: release
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+        working-directory: electron
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - name: Bundle the page (used when offline)
+        run: mkdir -p app && cp ../index.html app/index.html
+      - run: npm install --no-audit --no-fund
+
+      - name: Build (Mac, Apple silicon + Intel)
+        if: runner.os == 'macOS'
+        run: |
+          npx electron-builder --mac dir --universal --publish never
+          APP="$(ls -d dist/mac-universal/*.app)"
+          codesign --force --deep --sign - "$APP"
+          codesign --verify --deep --strict "$APP"
+          ditto -c -k --keepParent "$APP" dist/OilTimer-mac.zip
+          gh release upload desktop dist/OilTimer-mac.zip --clobber
+
+      - name: Build (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          npx electron-builder --win nsis --x64 --publish never
+          gh release upload desktop dist/OilTimer-Setup-win.exe --clobber

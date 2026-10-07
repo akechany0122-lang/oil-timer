@@ -1,0 +1,25 @@
+{
+  "name": "oil-timer",
+  "productName": "Oil Timer",
+  "version": "1.0.0",
+  "description": "ガラスの中をオイルがしずくになって流れ落ちる、癒しのオイルタイマー（デスクトップ版）",
+  "author": "akechany0122-lang",
+  "license": "UNLICENSED",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "devDependencies": {
+    "electron": "^33.2.1",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "io.github.akechany0122-lang.oiltimer",
+    "productName": "Oil Timer",
+    "files": ["main.js", "preload.js", "app/**"],
+    "protocols": [{ "name": "Oil Timer", "schemes": ["oiltimer"] }],
+    "mac": { "category": "public.app-category.lifestyle", "identity": null, "target": ["dir"] },
+    "win": { "target": ["nsis"] },
+    "nsis": { "oneClick": true, "perMachine": false, "artifactName": "OilTimer-Setup-win.exe" }
+  }
+}
